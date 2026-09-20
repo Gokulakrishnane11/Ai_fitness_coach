@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { saveProfile, UserProfile } from "@/lib/api";
 import { User, Activity, Flame, Utensils, CheckCircle2 } from "lucide-react";
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [formData, setFormData] = useState<UserProfile>({
     first_name: "Gokul",
     gender: "male",
@@ -24,12 +26,25 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [authLoading, user, router]);
+
+  if (authLoading) {
+    return <div className="py-20 text-center text-gray-400">Loading onboarding...</div>;
+  }
+
+  if (!user) {
+    return null;
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      // In local demo mode, use test token
-      await saveProfile("test_token_user_demo", formData);
+      await saveProfile(formData);
       setSaved(true);
       setTimeout(() => router.push("/dashboard"), 1200);
     } catch (err) {

@@ -1,20 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { submitJournal } from "@/lib/api";
 import { MessageSquareQuote, Send, Sparkles, CheckCircle } from "lucide-react";
 
 export default function CoachingPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [entryText, setEntryText] = useState("");
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<any>(null);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [authLoading, user, router]);
+
+  if (authLoading) {
+    return <div className="py-20 text-center text-gray-400">Loading AI coach session...</div>;
+  }
+
+  if (!user) {
+    return null;
+  }
 
   const handleSubmitJournal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!entryText.trim()) return;
     setLoading(true);
     try {
-      const res = await submitJournal("test_token_user_demo", entryText);
+      const res = await submitJournal(entryText);
       setFeedback(res.feedback);
     } catch (err) {
       console.error(err);

@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
 import { runSimulation, WeeklySeriesPoint } from "@/lib/api";
 import { Compass, ShieldAlert, Play, TrendingDown } from "lucide-react";
 
 export default function SimulationPage() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [deficit, setDeficit] = useState(-500);
   const [adherence, setAdherence] = useState(85);
   const [weeks, setWeeks] = useState(12);
@@ -12,10 +16,24 @@ export default function SimulationPage() {
   const [series, setSeries] = useState<WeeklySeriesPoint[] | null>(null);
   const [timeline, setTimeline] = useState<any>(null);
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [authLoading, user, router]);
+
+  if (authLoading) {
+    return <div className="py-20 text-center text-gray-400">Loading simulation engine...</div>;
+  }
+
+  if (!user) {
+    return null;
+  }
+
   const handleRunSimulation = async () => {
     setLoading(true);
     try {
-      const res = await runSimulation("test_token_user_demo", {
+      const res = await runSimulation({
         start_weight_kg: 80.0,
         target_weight_kg: 72.0,
         height_cm: 176.0,
