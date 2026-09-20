@@ -5,16 +5,17 @@ Reads environment variables from .env file for Supabase, Auth, and LLM integrati
 
 import os
 from dataclasses import dataclass
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 # Load environment variables from .env file if present
-load_dotenv()
+load_dotenv(find_dotenv())
 
 
 @dataclass
 class Settings:
     PROJECT_NAME: str = "AI Fitness Platform V1"
     API_V1_STR: str = "/api/v1"
+    TESTING: bool = os.getenv("TESTING", "false").lower() in ("true", "1", "yes")
 
     # Supabase Settings
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "https://xyzcompany.supabase.co")

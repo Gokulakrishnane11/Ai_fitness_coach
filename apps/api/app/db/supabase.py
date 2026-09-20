@@ -27,8 +27,12 @@ def get_authenticated_supabase_client(user_token: Optional[str] = None) -> Optio
     if not IS_LIVE_SUPABASE_ENABLED:
         return None
 
+    if user_token and user_token.startswith("test_token_"):
+        # Fall back to offline test store for unit tests using mock tokens
+        return None
+
     client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
-    if user_token and not user_token.startswith("test_token_"):
+    if user_token:
         # Forward authenticated user's JWT to PostgREST for RLS auth.uid() evaluation
         client.postgrest.auth(user_token)
     return client
@@ -61,11 +65,15 @@ class ProfileRepository:
     @staticmethod
     def upsert_profile(user_id: str, profile_data: Dict[str, Any], user_token: Optional[str] = None) -> Dict[str, Any]:
         record = {**profile_data, "id": user_id}
+        db_record = {k: v for k, v in record.items() if k != "target_metrics"}
         client = get_authenticated_supabase_client(user_token)
         if client:
-            res = client.table("profiles").upsert(record).execute()
+            res = client.table("profiles").upsert(db_record).execute()
             if res.data and len(res.data) > 0:
-                return res.data[0]
+                result = dict(res.data[0])
+                if "target_metrics" in record:
+                    result["target_metrics"] = record["target_metrics"]
+                return result
             raise RuntimeError("Supabase profile upsert returned empty response data")
         _OFFLINE_TEST_DB["profiles"][user_id] = record
         return record
@@ -94,7 +102,7 @@ class DailyLogRepository:
         record = {**log_data, "user_id": user_id}
         client = get_authenticated_supabase_client(user_token)
         if client:
-            res = client.table("daily_logs").upsert(record).execute()
+            res = client.table("daily_logs").upsert(record, on_conflict="user_id,log_date").execute()
             if res.data and len(res.data) > 0:
                 return res.data[0]
             raise RuntimeError("Supabase log upsert returned empty response data")
@@ -131,3 +139,33 @@ class JournalRepository:
         record["id"] = entry_id
         _OFFLINE_TEST_DB["journal_entries"][entry_id] = record
         return record
+
+    @staticmethod
+    def get_entries(
+        user_id: str,
+        user_token: Optional[str] = None,
+        limit: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """Read-only. Returns the user's journal entries, newest first (created_at desc)."""
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = (
+                client.table("journal_entries")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(limit)
+                .execute()
+            )
+            return res.data if res.data is not None else []
+        entries = [
+            dict(e)
+            for e in reversed(list(_OFFLINE_TEST_DB["journal_entries"].values()))
+            if e.get("user_id") == user_id
+        ]
+        # Stable sort: entries without created_at keep newest-inserted-first order
+        entries.sort(key=lambda e: str(e.get("created_at") or ""), reverse=True)
+        return entries[:limit]
+

@@ -14,20 +14,19 @@ from app.db import supabase as db_mod
 
 
 def test_offline_mode_repository_read_write():
-    # Verify that in offline mode (default test settings), repository uses offline test store
-    assert db_mod.IS_LIVE_SUPABASE_ENABLED is False
+    # Verify that in offline mode (or when patched to False), repository uses offline test store
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False):
+        profile = db_mod.ProfileRepository.upsert_profile("test_user_repo", {
+            "first_name": "TestUser",
+            "gender": "male",
+            "age": 25
+        })
+        assert profile["id"] == "test_user_repo"
+        assert profile["first_name"] == "TestUser"
 
-    profile = db_mod.ProfileRepository.upsert_profile("test_user_repo", {
-        "first_name": "TestUser",
-        "gender": "male",
-        "age": 25
-    })
-    assert profile["id"] == "test_user_repo"
-    assert profile["first_name"] == "TestUser"
-
-    fetched = db_mod.ProfileRepository.get_profile("test_user_repo")
-    assert fetched is not None
-    assert fetched["first_name"] == "TestUser"
+        fetched = db_mod.ProfileRepository.get_profile("test_user_repo")
+        assert fetched is not None
+        assert fetched["first_name"] == "TestUser"
 
 
 def test_live_supabase_mode_jwt_token_forwarding_and_error_raising():

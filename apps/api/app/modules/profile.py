@@ -51,6 +51,16 @@ def get_user_profile(user_ctx: UserContext = Depends(get_current_user)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Profile not found for this user. Please complete onboarding.",
         )
+    if "target_metrics" not in profile:
+        profile["target_metrics"] = calculate_target_metrics(
+            weight_kg=float(profile["weight_kg"]),
+            height_cm=float(profile["height_cm"]),
+            age=int(profile["age"]),
+            gender=str(profile["gender"]),
+            activity_level=str(profile["activity_level"]),
+            goal_type=str(profile["goal_type"]),
+            body_fat_pct=float(profile["body_fat_pct"]) if profile.get("body_fat_pct") is not None else None,
+        )
     return profile
 
 
