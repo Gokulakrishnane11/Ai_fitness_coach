@@ -7,7 +7,7 @@ and stateless empirical scoring functions for behavioral adaptation decisions.
 from typing import List, Literal, Optional, Union, Any, Dict
 from datetime import date, datetime, timedelta
 from pydantic import BaseModel, Field
-from app.db.supabase import ProfileRepository, DailyLogRepository
+from app.db.supabase import ProfileRepository, DailyLogRepository, JournalRepository
 
 
 
@@ -618,18 +618,21 @@ def collect_adaptation_data(
     profile_repository: Any = ProfileRepository,
     daily_log_repository: Any = DailyLogRepository,
     user_token: Optional[str] = None,
+    journal_repository: Any = JournalRepository,
 ) -> Dict[str, Any]:
     """
-    Read-only data collector that retrieves raw profile and daily tracking logs
-    for a specific authenticated user.
+    Read-only data collector that retrieves raw profile, daily tracking logs and
+    journal entries for a specific authenticated user.
 
     Requirements:
     - Pure orchestration layer: reads raw data only.
-    - Reuses existing repository methods (ProfileRepository.get_profile, DailyLogRepository.get_logs).
+    - Reuses existing repository methods (ProfileRepository.get_profile,
+      DailyLogRepository.get_logs, JournalRepository.get_entries).
     - Read-only: does not create, update, or delete records.
     - Explicitly handles missing profile by raising ValueError (does not invent fake profiles).
-    - Propagates any database/repository errors up to caller.
-    - Returns raw dict: {"profile": <profile>, "daily_logs": <logs>}.
+    - Propagates any database/repository errors up to caller (including journal errors).
+    - Does not reorder, filter, or interpret journal entries.
+    - Returns raw dict: {"profile": <profile>, "daily_logs": <logs>, "journal_entries": <entries>}.
     """
     if not user_id:
         raise ValueError("user_id must be provided")
@@ -649,9 +652,16 @@ def collect_adaptation_data(
     else:
         daily_logs = daily_log_repository.get_logs(user_id)
 
+    # 3. Fetch Journal Entries (raw, exactly as returned by the repository)
+    if user_token is not None:
+        journal_entries = journal_repository.get_entries(user_id, user_token=user_token)
+    else:
+        journal_entries = journal_repository.get_entries(user_id)
+
     return {
         "profile": profile,
         "daily_logs": daily_logs if daily_logs is not None else [],
+        "journal_entries": journal_entries if journal_entries is not None else [],
     }
 
 
