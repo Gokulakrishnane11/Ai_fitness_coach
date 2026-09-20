@@ -8,6 +8,7 @@ from typing import List, Literal, Optional, Union, Any, Dict
 from datetime import date, datetime, timedelta, timezone
 from pydantic import BaseModel, Field
 from app.db.supabase import ProfileRepository, DailyLogRepository, JournalRepository
+from app.engine.bmr_tdee import calculate_target_metrics
 
 
 
@@ -1075,3 +1076,78 @@ def build_adaptation_context(
         "progress": aggregate_daily_logs(daily_logs),
         "journal": aggregate_journal_entries(journal_entries),
     }
+
+
+_TARGET_METRICS_REQUIRED_PROFILE_FIELDS = (
+    "weight_kg",
+    "height_cm",
+    "age",
+    "gender",
+    "activity_level",
+    "goal_type",
+)
+
+
+def ensure_target_metrics(profile: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Returns a shallow copy of a profile row that is guaranteed to carry target_metrics.
+
+    Supabase does not persist target_metrics (it is not a profiles column), so a profile
+    loaded from the database has none. When it is missing or empty, it is recomputed with the
+    same deterministic engine call that GET /profile uses (calculate_target_metrics).
+    Existing non-empty target_metrics are kept as-is.
+
+    Raises ValueError naming every required profile field that is missing. Never invents
+    defaults. Does not mutate the input.
+    """
+    resolved = dict(profile)
+    if resolved.get("target_metrics"):
+        return resolved
+
+    missing = [
+        f for f in _TARGET_METRICS_REQUIRED_PROFILE_FIELDS if resolved.get(f) is None
+    ]
+    if missing:
+        raise ValueError(
+            "Cannot compute target metrics; profile is missing: " + ", ".join(missing)
+        )
+
+    body_fat = resolved.get("body_fat_pct")
+    resolved["target_metrics"] = calculate_target_metrics(
+        weight_kg=float(resolved["weight_kg"]),
+        height_cm=float(resolved["height_cm"]),
+        age=int(resolved["age"]),
+        gender=str(resolved["gender"]),
+        activity_level=str(resolved["activity_level"]),
+        goal_type=str(resolved["goal_type"]),
+        body_fat_pct=float(body_fat) if body_fat is not None else None,
+    )
+    return resolved
+
+
+def compute_adaptation_for_user(
+    user_id: str,
+    user_token: Optional[str] = None,
+    profile_repository: Any = ProfileRepository,
+    daily_log_repository: Any = DailyLogRepository,
+    journal_repository: Any = JournalRepository,
+) -> AdaptationDecision:
+    """
+    Read-only pipeline: collect_adaptation_data -> ensure_target_metrics ->
+    prepare_adaptation_input -> compute_adaptation.
+
+    Persists nothing. Raises ValueError for a missing profile or a profile too incomplete
+    to derive targets. Repository errors propagate to the caller.
+    """
+    data = collect_adaptation_data(
+        user_id=user_id,
+        profile_repository=profile_repository,
+        daily_log_repository=daily_log_repository,
+        user_token=user_token,
+        journal_repository=journal_repository,
+    )
+    profile = ensure_target_metrics(data["profile"])
+    adaptation_input = prepare_adaptation_input(
+        profile, data["daily_logs"], data["journal_entries"]
+    )
+    return compute_adaptation(adaptation_input)
