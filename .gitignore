@@ -1,0 +1,27 @@
+# Environment Variables & Secrets
+.env
+*.env
+.env*.local
+.env.local
+NVIDIA_API_KEY.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+env/
+venv/
+
+# Node & Web
+node_modules/
+.next/
+dist/
+build/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
