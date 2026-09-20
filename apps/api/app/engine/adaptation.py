@@ -5,7 +5,7 @@ and stateless empirical scoring functions for behavioral adaptation decisions.
 """
 
 from typing import List, Literal, Optional, Union, Any, Dict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pydantic import BaseModel, Field
 from app.db.supabase import ProfileRepository, DailyLogRepository, JournalRepository
 
@@ -913,6 +913,39 @@ def _parse_journal_date(val: Any) -> Optional[date]:
     return None
 
 
+def _parse_journal_timestamp(val: Any) -> Optional[datetime]:
+    """Parse a journal created_at value to a timezone-aware UTC datetime for ordering.
+
+    Handles datetime/date objects, ISO-8601 strings (with or without offset or a trailing
+    "Z"), and YYYY-MM-DD strings. Naive values are treated as UTC. Returns None for
+    missing or malformed values.
+    """
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        dt = val
+    elif isinstance(val, date):
+        dt = datetime(val.year, val.month, val.day)
+    elif isinstance(val, str):
+        s = val.strip()
+        if len(s) < 10:
+            return None
+        if s[-1] in ("Z", "z"):
+            s = s[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(s)
+        except ValueError:
+            try:
+                dt = datetime.strptime(s[:10], "%Y-%m-%d")
+            except ValueError:
+                return None
+    else:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 _ALLOWED_JOURNAL_SENTIMENTS = frozenset({"fatigued", "motivated", "consistent"})
 
 
@@ -945,13 +978,16 @@ def aggregate_journal_entries(
     raw journal entry records.
 
     Returns:
-        - journal_count: total number of usable journal entries
+        - journal_count: total number of journal entries provided
         - latest_journal_summary: summary text from the most recent entry (or None)
         - latest_journal_sentiment: sentiment_tag from the most recent entry (or None)
 
     Rules:
-        - Sorts usable entries chronologically by created_at without mutating the input.
-        - Uses the most recent entry with a parseable date for latest fields.
+        - Selects the most recent entry by full created_at timestamp (normalized to UTC),
+          so multiple entries on the same day are ordered by time of day.
+        - The result does not depend on the order of the input list. Exact timestamp
+          ties are resolved by entry id.
+        - Does not mutate the input.
         - Does NOT invent summary or sentiment; returns None when absent.
         - Entries without a parseable created_at are counted but excluded
           from latest-entry selection.
@@ -963,29 +999,31 @@ def aggregate_journal_entries(
             "latest_journal_sentiment": None,
         }
 
-    # Separate entries with valid dates from those without
-    dated_entries: List[tuple[date, Dict[str, Any]]] = []
+    dated_entries: List[tuple[datetime, Dict[str, Any]]] = []
 
     for entry in journal_entries:
         if not isinstance(entry, dict):
             continue
-        parsed = _parse_journal_date(entry.get("created_at"))
+        parsed = _parse_journal_timestamp(entry.get("created_at"))
         if parsed is not None:
             dated_entries.append((parsed, entry))
 
     journal_count = len(journal_entries)
 
     if not dated_entries:
-        # All entries lack parseable dates — count them but can't pick latest
+        # All entries lack parseable timestamps: count them but can't pick latest
         return {
             "journal_count": journal_count,
             "latest_journal_summary": None,
             "latest_journal_sentiment": None,
         }
 
-    # Sort chronologically (ascending) and pick the most recent
-    dated_entries.sort(key=lambda t: t[0])
-    _, latest_entry = dated_entries[-1]
+    # Most recent by full UTC timestamp; exact ties resolve by id so the result
+    # never depends on input order
+    _, latest_entry = max(
+        dated_entries,
+        key=lambda t: (t[0], str(t[1].get("id") or "")),
+    )
 
     # Extract summary: stored inside ai_feedback dict, or as top-level fallback
     ai_feedback = latest_entry.get("ai_feedback")
