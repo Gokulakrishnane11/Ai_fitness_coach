@@ -849,20 +849,23 @@ def aggregate_daily_logs(
 
 
 # ---------------------------------------------------------------------------
-# Pure Adaptation-Input Preparation Layer
-# ---------------------------------------------------------------------------
+DEFAULT_JOURNAL_FRESHNESS_DAYS = 7
+
 
 def prepare_adaptation_input(
     profile: Dict[str, Any],
     daily_logs: List[Dict[str, Any]],
     journal_entries: Optional[List[Dict[str, Any]]] = None,
+    *,
+    journal_max_age_days: Optional[int] = DEFAULT_JOURNAL_FRESHNESS_DAYS,
+    reference_time: Optional[datetime] = None,
 ) -> AdaptationInput:
     """
     Pure function that bridges raw profile, daily-log, and journal data into a validated
     AdaptationInput instance.
 
     Steps:
-        1. Delegates to build_adaptation_context() for aggregation.
+        1. Delegates to build_adaptation_context() for aggregation with freshness windowing.
         2. Reads progress values from context["progress"].
         3. Reads journal values from context["journal"].
         4. Extracts required profile fields (goal_type, target metrics, etc.).
@@ -878,7 +881,13 @@ def prepare_adaptation_input(
     If a required profile field is missing, Pydantic validation will raise
     rather than silently inventing a default value.
     """
-    context = build_adaptation_context(profile, daily_logs, journal_entries or [])
+    context = build_adaptation_context(
+        profile,
+        daily_logs,
+        journal_entries or [],
+        journal_max_age_days=journal_max_age_days,
+        reference_time=reference_time,
+    )
     progress = context["progress"]
     journal = context["journal"]
 
@@ -976,6 +985,35 @@ def _parse_journal_timestamp(val: Any) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
+def is_journal_fresh(
+    entry_time: Any,
+    max_age_days: int = DEFAULT_JOURNAL_FRESHNESS_DAYS,
+    reference_time: Optional[datetime] = None,
+) -> bool:
+    """
+    Checks whether a journal timestamp or datetime is within the freshness window.
+
+    Rules:
+        - Parses entry_time using _parse_journal_timestamp (returns False if unparseable/missing).
+        - Normalizes reference_time to timezone-aware UTC (defaults to datetime.now(timezone.utc) if None).
+        - Returns True if parsed entry_timestamp >= cutoff (ref - timedelta(days=max_age_days)).
+        - Returns False if parsed entry_timestamp < cutoff.
+    """
+    dt = _parse_journal_timestamp(entry_time)
+    if dt is None:
+        return False
+
+    if reference_time is None:
+        ref = datetime.now(timezone.utc)
+    elif reference_time.tzinfo is None:
+        ref = reference_time.replace(tzinfo=timezone.utc)
+    else:
+        ref = reference_time.astimezone(timezone.utc)
+
+    cutoff = ref - timedelta(days=max_age_days)
+    return dt >= cutoff
+
+
 _ALLOWED_JOURNAL_SENTIMENTS = frozenset({"fatigued", "motivated", "consistent"})
 
 
@@ -1002,6 +1040,9 @@ def normalize_journal_sentiment(value: Optional[str]) -> Optional[str]:
 
 def aggregate_journal_entries(
     journal_entries: List[Dict[str, Any]],
+    *,
+    max_age_days: Optional[int] = None,
+    reference_time: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """
     Pure aggregation function that derives journal context from a list of
@@ -1021,6 +1062,9 @@ def aggregate_journal_entries(
         - Does NOT invent summary or sentiment; returns None when absent.
         - Entries without a parseable created_at are counted but excluded
           from latest-entry selection.
+        - If max_age_days is provided, verifies that the latest entry is within the freshness
+          window (latest_dt >= reference_time - max_age_days). If stale, returns None for
+          summary and sentiment while preserving journal_count.
     """
     if not journal_entries:
         return {
@@ -1050,10 +1094,19 @@ def aggregate_journal_entries(
 
     # Most recent by full UTC timestamp; exact ties resolve by id so the result
     # never depends on input order
-    _, latest_entry = max(
+    latest_dt, latest_entry = max(
         dated_entries,
         key=lambda t: (t[0], str(t[1].get("id") or "")),
     )
+
+    # Freshness evaluation if max_age_days is specified
+    if max_age_days is not None:
+        if not is_journal_fresh(latest_dt, max_age_days=max_age_days, reference_time=reference_time):
+            return {
+                "journal_count": journal_count,
+                "latest_journal_summary": None,
+                "latest_journal_sentiment": None,
+            }
 
     # Extract summary: stored inside ai_feedback dict, or as top-level fallback
     ai_feedback = latest_entry.get("ai_feedback")
@@ -1080,6 +1133,9 @@ def build_adaptation_context(
     profile: Dict[str, Any],
     daily_logs: List[Dict[str, Any]],
     journal_entries: List[Dict[str, Any]],
+    *,
+    journal_max_age_days: Optional[int] = None,
+    reference_time: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """
     Pure function that combines daily-log and journal aggregation into a
@@ -1090,6 +1146,8 @@ def build_adaptation_context(
                  not used for calculations in this version.
         daily_logs: Raw daily tracking log records.
         journal_entries: Raw journal entry records.
+        journal_max_age_days: Optional maximum age in days for journal freshness.
+        reference_time: Optional reference datetime for freshness evaluation.
 
     Returns:
         {
@@ -1103,7 +1161,11 @@ def build_adaptation_context(
     """
     return {
         "progress": aggregate_daily_logs(daily_logs),
-        "journal": aggregate_journal_entries(journal_entries),
+        "journal": aggregate_journal_entries(
+            journal_entries,
+            max_age_days=journal_max_age_days,
+            reference_time=reference_time,
+        ),
     }
 
 
