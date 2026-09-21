@@ -48,6 +48,14 @@ class AdaptationDecision(BaseModel):
 
     actionable_recommendations: List[str] = Field(default_factory=list, description="Specific actionable recommendations")
     coaching_summary: str = Field("", description="High-level coaching summary text")
+    objective_data_available: bool = Field(
+        False,
+        description=(
+            "True only if at least one objective signal (adherence, recovery, stress, sleep, "
+            "injury risk, plateau probability) was provided and evaluated. When False, the numeric "
+            "score fields are neutral defaults, not measurements."
+        ),
+    )
 
 
 class AdaptationInput(BaseModel):
@@ -477,6 +485,9 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
         2. Conservative Adjustments: Zero diet/workout modifications in this v1 phase.
         3. Factual Signal Reflection: Fatigue and plateau flags are derived strictly from empirical
            inputs (recovery < 50, plateau >= 70) without simulation drift or LLM hallucination.
+        4. Honest Unmeasured State: If no objective signal was provided, objective_data_available
+           is False and coaching_summary says readiness could not be assessed. The numeric score
+           defaults are neutral placeholders, not measurements.
     """
     # 1. Zero-Data Safety Guard
     if not has_sufficient_adaptation_data(input_data.log_count, minimum_logs=3):
@@ -522,6 +533,18 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
     decision_sleep = eval_sleep if eval_sleep is not None else 100
     decision_plateau = eval_plateau if eval_plateau is not None else 0
     decision_injury = eval_injury if eval_injury is not None else 0
+
+    objective_data_available = any(
+        score is not None
+        for score in (
+            eval_adherence,
+            eval_recovery,
+            eval_stress,
+            eval_sleep,
+            eval_plateau,
+            eval_injury,
+        )
+    )
 
     # 3. Derive Operational Flags
     high_fatigue_flag = bool(
@@ -578,6 +601,11 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
         coaching_summary = "Potential plateau detected. Continue tracking weight and adherence closely."
     elif has_objective_recommendations:
         coaching_summary = "Elevated physiological strain observed across recent logs. Maintain steady baseline habits."
+    elif not objective_data_available:
+        coaching_summary = (
+            "Not enough objective data (recovery, stress, sleep, adherence, injury or plateau signals) "
+            "has been recorded to assess readiness."
+        )
     else:
         coaching_summary = "Consistent progress and healthy readiness metrics observed across recent logs."
 
@@ -607,6 +635,7 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
         ),
         actionable_recommendations=recommendations,
         coaching_summary=coaching_summary,
+        objective_data_available=objective_data_available,
     )
 
 
