@@ -3,6 +3,7 @@ AI Coaching & Journal Feedback API Module (Phase 7).
 Parses user journal text using Pydantic structured output with Groq / NVIDIA NIM.
 """
 
+import re
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends
@@ -24,17 +25,51 @@ class JournalSubmissionSchema(BaseModel):
     entry_text: str = Field(..., min_length=5, max_length=2000)
 
 
+FATIGUE_KEYWORDS = [
+    "tired",
+    "exhausted",
+    "fatigue",
+    "fatigued",
+    "sore",
+    "soreness",
+    "pain",
+    "painful",
+    "weak",
+    "weakness",
+]
+
+MOTIVATED_KEYWORDS = [
+    "great",
+    "strong",
+    "best",
+    "pushed",
+    "easy",
+    "motivated",
+    "motivation",
+    "fantastic",
+    "smashed",
+    "record",
+    "pr",
+    "prs",
+]
+
+
+def _contains_keyword(text: str, keywords: List[str]) -> bool:
+    """Checks whether any keyword or phrase matches in text at word boundaries."""
+    pattern = r"\b(?:" + "|".join(re.escape(k) for k in keywords) + r")\b"
+    return bool(re.search(pattern, text, re.IGNORECASE))
+
+
 def generate_fallback_coaching_feedback(text: str) -> CoachingFeedbackSchema:
     """Generates structured feedback locally when LLM API keys are unconfigured."""
-    text_lower = text.lower()
-    if any(word in text_lower for word in ["tired", "exhausted", "fatigue", "sore", "pain", "weak"]):
+    if _contains_keyword(text, FATIGUE_KEYWORDS):
         sentiment = "fatigued"
         tips = [
             "Prioritize 8 hours of sleep tonight and increase water intake.",
             "Consider a light recovery walk or active mobility session instead of heavy lifting.",
             "Ensure protein and complex carb intake are sufficient for muscular recovery."
         ]
-    elif any(word in text_lower for word in ["great", "strong", "best", "pushed", "easy", "motivated", "fantastic", "smashed", "record", "pr"]):
+    elif _contains_keyword(text, MOTIVATED_KEYWORDS):
         sentiment = "motivated"
         tips = [
             "Capitalize on high energy by maintaining strict exercise form and progressive overload.",
