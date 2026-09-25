@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -10,7 +10,11 @@ import {
   MealPlanResponse,
   generateWorkoutPlan,
   WorkoutPlanResponse,
+  fetchAdaptationDecision,
+  AdaptationDecision,
+  AdaptationApiError,
 } from "@/lib/api";
+import AdaptationSection from "./AdaptationSection";
 import { Flame, Dumbbell, Droplets, Target, ShieldCheck, AlertTriangle, Utensils } from "lucide-react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
@@ -29,6 +33,38 @@ export default function DashboardPage() {
   const [workoutPlan, setWorkoutPlan] = useState<WorkoutPlanResponse | null>(null);
   const [workoutPlanLoading, setWorkoutPlanLoading] = useState(false);
   const [workoutPlanError, setWorkoutPlanError] = useState<string | null>(null);
+
+  // Independent Adaptation state
+  const [adaptation, setAdaptation] = useState<AdaptationDecision | null>(null);
+  const [adaptationLoading, setAdaptationLoading] = useState(false);
+  const [adaptationError, setAdaptationError] = useState<string | null>(null);
+  const [adaptationIncomplete, setAdaptationIncomplete] = useState(false);
+
+  // Isolated Adaptation fetcher
+  const fetchAdaptation = useCallback(async () => {
+    setAdaptationLoading(true);
+    setAdaptationError(null);
+    setAdaptationIncomplete(false);
+    try {
+      const decision = await fetchAdaptationDecision();
+      setAdaptation(decision);
+    } catch (err: unknown) {
+      if (err instanceof AdaptationApiError) {
+        if (err.status === 422) {
+          setAdaptationIncomplete(true);
+          setAdaptationError(null);
+        } else {
+          setAdaptationError(err.message);
+        }
+      } else if (err instanceof Error) {
+        setAdaptationError(err.message);
+      } else {
+        setAdaptationError("Failed to load adaptation insights.");
+      }
+    } finally {
+      setAdaptationLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -59,6 +95,10 @@ export default function DashboardPage() {
           const data: UserProfile = await res.json();
           setProfile(data);
 
+          // 1. Fetch adaptation decisions independently (non-blocking)
+          fetchAdaptation();
+
+          // 2. Meal plan generation
           if (data.target_metrics) {
             setMealPlanLoading(true);
             setMealPlanError(null);
@@ -79,7 +119,7 @@ export default function DashboardPage() {
             }
           }
 
-          // Workout plan generation
+          // 3. Workout plan generation
           setWorkoutPlanLoading(true);
           setWorkoutPlanError(null);
           try {
@@ -103,7 +143,7 @@ export default function DashboardPage() {
         }
       })();
     }
-  }, [authLoading, user, router]);
+  }, [authLoading, user, router, fetchAdaptation]);
 
   if (authLoading || loading) {
     return <div className="py-20 text-center text-gray-400">Loading physiological dashboard...</div>;
@@ -214,6 +254,15 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* AI Daily Readiness & Dynamic Adaptation */}
+      <AdaptationSection
+        adaptation={adaptation}
+        loading={adaptationLoading}
+        error={adaptationError}
+        incompleteProfile={adaptationIncomplete}
+        onRetry={fetchAdaptation}
+      />
 
       {/* Daily Meal Plan Section */}
       <div className="glass-card p-6 space-y-6">
