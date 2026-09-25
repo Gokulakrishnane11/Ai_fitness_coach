@@ -152,6 +152,51 @@ export interface DailyLogsResponse {
   count: number;
 }
 
+export interface DietAdjustment {
+  calorie_delta: number;
+  protein_delta_g: number;
+  carb_delta_g: number;
+  fat_delta_g: number;
+}
+
+export interface WorkoutAdjustment {
+  intensity: "reduce" | "maintain" | "increase";
+  volume: "low" | "medium" | "high";
+  recovery_days: number;
+  cardio_minutes: number;
+  deload_recommended: boolean;
+}
+
+export interface AdaptationDecision {
+  adherence_score: number;
+  recovery_score: number;
+  stress_score: number;
+  sleep_quality: number;
+  plateau_probability: number;
+  injury_risk: number;
+  readiness_factor: number;
+  plateau_detected: boolean;
+  high_fatigue_flag: boolean;
+  diet_adjustment: DietAdjustment;
+  workout_adjustment: WorkoutAdjustment;
+  actionable_recommendations: string[];
+  coaching_summary: string;
+  objective_data_available: boolean;
+}
+
+export class AdaptationApiError extends Error {
+  status: number;
+  detail?: string;
+
+  constructor(status: number, message: string, detail?: string) {
+    super(message);
+    this.name = "AdaptationApiError";
+    this.status = status;
+    this.detail = detail;
+    Object.setPrototypeOf(this, AdaptationApiError.prototype);
+  }
+}
+
 /**
  * Helper to obtain the real authenticated Supabase access token.
  * Throws an authentication error if no active session exists (never sends fake/test tokens).
@@ -331,6 +376,64 @@ export async function fetchDailyLogs(token?: string): Promise<DailyLogsResponse>
     headers: { Authorization: `Bearer ${authToken}` },
   });
   if (!res.ok) throw new Error("Failed to fetch daily logs");
+  return res.json();
+}
+
+/**
+ * Fetches the computed AI adaptation decision for the authenticated user.
+ * Reuses the existing authentication token handling and API base URL conventions.
+ *
+ * Status code handling:
+ * - 401: Unauthenticated request (user not logged in or invalid token)
+ * - 404: Profile not found (user has not completed onboarding)
+ * - 422: Incomplete profile or missing target metrics required for adaptation
+ * - Other non-success HTTP codes: Meaningful error message
+ */
+export async function fetchAdaptationDecision(token?: string): Promise<AdaptationDecision> {
+  const authToken = await getAuthToken(token);
+  const res = await fetch(`${API_BASE_URL}/adaptation`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+
+  if (!res.ok) {
+    let errorDetail: string | undefined;
+    try {
+      const errData = await res.json();
+      if (errData && typeof errData === "object" && typeof errData.detail === "string") {
+        errorDetail = errData.detail;
+      }
+    } catch {
+      // Non-JSON response body
+    }
+
+    if (res.status === 401) {
+      throw new AdaptationApiError(
+        401,
+        errorDetail || "Authentication required. Please log in to view adaptation insights.",
+        errorDetail
+      );
+    }
+    if (res.status === 404) {
+      throw new AdaptationApiError(
+        404,
+        errorDetail || "User profile not found. Please complete profile setup.",
+        errorDetail
+      );
+    }
+    if (res.status === 422) {
+      throw new AdaptationApiError(
+        422,
+        errorDetail || "Incomplete profile. Required biometric fields are missing for adaptation.",
+        errorDetail
+      );
+    }
+    throw new AdaptationApiError(
+      res.status,
+      errorDetail || `Failed to fetch adaptation decision (HTTP ${res.status})`,
+      errorDetail
+    );
+  }
+
   return res.json();
 }
 
