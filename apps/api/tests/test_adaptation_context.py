@@ -120,6 +120,8 @@ class TestAggregationResultsPreserved:
             "weight_change_kg_7d", "weight_change_kg_14d", "weight_change_kg_28d",
             "completed_workouts", "days_with_calorie_data",
             "days_with_target_calories", "average_energy_rating",
+            "average_calories_consumed", "average_protein_consumed_g",
+            "average_carbs_consumed_g", "average_fat_consumed_g",
         }
         assert set(result["progress"].keys()) == expected_keys
 

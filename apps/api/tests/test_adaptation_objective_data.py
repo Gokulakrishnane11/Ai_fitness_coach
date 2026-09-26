@@ -168,3 +168,33 @@ def test_production_shaped_pipeline_reports_no_objective_data():
     assert decision.objective_data_available is False
     assert decision.coaching_summary == NO_DATA_SUMMARY
     assert decision.actionable_recommendations == [FATIGUE_REC]
+
+
+def test_nutrition_and_training_modulate_readiness_while_objective_data_remains_false():
+    """
+    Verify Task 11A semantics: empirical nutrition_score and training_quality
+    modulate the composite readiness_factor even when the 6 primary physiological
+    metrics are unmeasured and objective_data_available remains False.
+    """
+    # Base input with empirical nutrition and training signals, but NO sensor biometrics
+    inp = _input(nutrition_score=80.0, training_quality=70.0)
+    decision = compute_adaptation(inp)
+
+    # 1. Primary 6 physiological scores remain neutral placeholders
+    assert (
+        decision.adherence_score,
+        decision.recovery_score,
+        decision.stress_score,
+        decision.sleep_quality,
+        decision.plateau_probability,
+        decision.injury_risk,
+    ) == (100, 100, 0, 100, 0, 0)
+
+    # 2. objective_data_available remains False to protect dashboard baseline mode
+    assert decision.objective_data_available is False
+    assert decision.coaching_summary == NO_DATA_SUMMARY
+
+    # 3. readiness_factor reflects the empirical lifestyle signals:
+    # (100*0.30) + (100*0.20) + (80*0.20) + (70*0.15) + (100*0.10) + (100*0.05)
+    # = 30 + 20 + 16 + 10.5 + 10 + 5 = 91.5 / 100.0 = 0.915
+    assert decision.readiness_factor == 0.915

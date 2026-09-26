@@ -82,6 +82,8 @@ class AdaptationInput(BaseModel):
     sleep_quality: Optional[float] = Field(None, ge=0.0, le=100.0, description="Recent empirical sleep quality score")
     injury_risk: Optional[float] = Field(None, ge=0.0, le=100.0, description="Recent empirical injury risk score")
     plateau_probability: Optional[float] = Field(None, ge=0.0, le=100.0, description="Recent empirical plateau probability score")
+    nutrition_score: Optional[float] = Field(None, ge=0.0, le=100.0, description="Recent empirical nutrition adherence score")
+    training_quality: Optional[float] = Field(None, ge=0.0, le=100.0, description="Recent empirical training quality score")
 
     # Progress
     weight_change_kg_7d: Optional[float] = Field(None, description="Weight change over past 7 days in kg")
@@ -105,6 +107,16 @@ def clamp(value: Any, low: int = 0, high: int = 100) -> int:
         return max(low, min(high, int(round(float(value)))))
     except Exception:
         return low
+
+
+def _safe_float(val: Any) -> Optional[float]:
+    """Safely casts a value to float, returning None on failure or if val is None."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
 
 
 def has_sufficient_adaptation_data(log_count: int, minimum_logs: int = 3) -> bool:
@@ -189,6 +201,135 @@ def score_injury_risk(
     if risk_input is None:
         return None
     return clamp(risk_input, low=0, high=100)
+
+
+DEFAULT_NUTRITION_WEIGHT_CALORIES = 0.40
+DEFAULT_NUTRITION_WEIGHT_PROTEIN = 0.30
+DEFAULT_NUTRITION_WEIGHT_CARBS = 0.15
+DEFAULT_NUTRITION_WEIGHT_FAT = 0.15
+
+
+def score_nutrition(
+    *,
+    actual_calories: Optional[Union[int, float]] = None,
+    target_calories: Optional[Union[int, float]] = None,
+    actual_protein_g: Optional[Union[int, float]] = None,
+    target_protein_g: Optional[Union[int, float]] = None,
+    actual_carbs_g: Optional[Union[int, float]] = None,
+    target_carbs_g: Optional[Union[int, float]] = None,
+    actual_fat_g: Optional[Union[int, float]] = None,
+    target_fat_g: Optional[Union[int, float]] = None,
+) -> Optional[float]:
+    """
+    Evaluates empirical nutrition adherence score (0.0 to 100.0).
+
+    Compares logged average intake against target nutrition values.
+    Uses available data only; missing macros are NOT treated as zero intake.
+    If no valid nutrition data exists, returns None.
+
+    Weighting:
+        calories: 0.40
+        protein:  0.30
+        carbs:    0.15
+        fat:      0.15
+    When a subset of metrics is present, the weights are re-normalized across
+    the available components.
+
+    Sub-score formula for each component:
+        accuracy = max(0.0, min(100.0, 100.0 - (abs(actual - target) / target) * 100.0))
+    """
+    components = [
+        (actual_calories, target_calories, DEFAULT_NUTRITION_WEIGHT_CALORIES),
+        (actual_protein_g, target_protein_g, DEFAULT_NUTRITION_WEIGHT_PROTEIN),
+        (actual_carbs_g, target_carbs_g, DEFAULT_NUTRITION_WEIGHT_CARBS),
+        (actual_fat_g, target_fat_g, DEFAULT_NUTRITION_WEIGHT_FAT),
+    ]
+
+    weighted_score_sum = 0.0
+    active_weight_sum = 0.0
+
+    for act_raw, tgt_raw, weight in components:
+        act = _safe_float(act_raw)
+        tgt = _safe_float(tgt_raw)
+        if act is not None and tgt is not None and tgt > 0:
+            act_clamped = max(0.0, act)
+            error_ratio = abs(act_clamped - tgt) / tgt
+            sub_score = max(0.0, min(100.0, 100.0 - (error_ratio * 100.0)))
+            weighted_score_sum += sub_score * weight
+            active_weight_sum += weight
+
+    if active_weight_sum <= 0.0:
+        return None
+
+    final_score = weighted_score_sum / active_weight_sum
+    return round(max(0.0, min(100.0, final_score)), 2)
+
+
+DEFAULT_TRAINING_WEIGHT_ADHERENCE = 0.60
+DEFAULT_TRAINING_WEIGHT_ENERGY = 0.40
+
+
+def score_training_quality(
+    *,
+    workout_adherence: Optional[Union[int, float]] = None,
+    average_energy_rating: Optional[Union[int, float]] = None,
+    completed_workouts: Optional[int] = None,
+    planned_workouts: Optional[int] = None,
+    planned_workouts_per_week: Optional[int] = None,
+    window_days: Optional[Union[int, float]] = None,
+) -> Optional[float]:
+    """
+    Evaluates empirical training quality score (0.0 to 100.0).
+
+    Combines workout adherence and energy rating:
+        workout adherence: 0.60
+        energy rating:     0.40 (energy rating 1-10 scaled to 0-100)
+
+    If only one signal is available, it is re-normalized to 1.0.
+    If no training data exists, returns None.
+
+    When window_days is provided (> 0), expected workouts are normalized:
+        expected_workouts = planned_workouts * (window_days / 7.0)
+    If window_days is None, planned_workouts is treated as the expected count directly.
+    """
+    adh_val = _safe_float(workout_adherence)
+    if adh_val is None:
+        cw = _safe_float(completed_workouts)
+        pw = _safe_float(planned_workouts if planned_workouts is not None else planned_workouts_per_week)
+        w_days = _safe_float(window_days)
+        if cw is not None and pw is not None and pw > 0:
+            if w_days is not None:
+                if w_days > 0:
+                    expected = pw * (w_days / 7.0)
+                    if expected > 0:
+                        adh_val = (cw / expected) * 100.0
+                else:
+                    adh_val = None
+            else:
+                adh_val = (cw / pw) * 100.0
+
+    adh_score: Optional[float] = None
+    if adh_val is not None:
+        adh_score = max(0.0, min(100.0, adh_val))
+
+    nrg_val = _safe_float(average_energy_rating)
+    nrg_score: Optional[float] = None
+    if nrg_val is not None:
+        # Scale 1-10 rating to 0-100 (e.g. 7.5 -> 75.0)
+        nrg_score = max(0.0, min(100.0, nrg_val * 10.0))
+
+    if adh_score is not None and nrg_score is not None:
+        combined = (
+            (adh_score * DEFAULT_TRAINING_WEIGHT_ADHERENCE)
+            + (nrg_score * DEFAULT_TRAINING_WEIGHT_ENERGY)
+        )
+        return round(max(0.0, min(100.0, combined)), 2)
+    elif adh_score is not None:
+        return round(max(0.0, min(100.0, adh_score)), 2)
+    elif nrg_score is not None:
+        return round(max(0.0, min(100.0, nrg_score)), 2)
+    else:
+        return None
 
 
 def calculate_readiness_factor(
@@ -424,6 +565,8 @@ def build_adaptation_input(
     stress_score: Optional[float] = None,
     sleep_quality: Optional[float] = None,
     injury_risk: Optional[float] = None,
+    nutrition_score: Optional[float] = None,
+    training_quality: Optional[float] = None,
     weight_change_kg_7d: Optional[float] = None,
     weight_change_kg_14d: Optional[float] = None,
     weight_change_kg_28d: Optional[float] = None,
@@ -459,6 +602,8 @@ def build_adaptation_input(
         sleep_quality=sleep_quality,
         injury_risk=injury_risk,
         plateau_probability=plateau_prob,
+        nutrition_score=nutrition_score,
+        training_quality=training_quality,
         weight_change_kg_7d=weight_change_kg_7d,
         weight_change_kg_14d=weight_change_kg_14d,
         weight_change_kg_28d=weight_change_kg_28d,
@@ -555,10 +700,21 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
     )
 
     # 4. Calculate Readiness Factor
-    # NOTE: Neutral unmeasured secondary scores (100.0) are used strictly as a computational
-    # default in calculate_readiness_factor() so that missing secondary dimensions (nutrition,
-    # training quality, motivation) do NOT impose an artificial penalty on the user's readiness.
-    # These neutral values are computational stand-ins, not verified user measurements.
+    # NOTE: When empirical nutrition_score or training_quality signals are available on
+    # input_data, they are passed directly into calculate_readiness_factor. Unmeasured
+    # secondary scores fall back to neutral 100.0 computational stand-ins so that missing
+    # dimensions do NOT impose an artificial penalty on the user's readiness.
+    effective_nutrition_score = (
+        input_data.nutrition_score
+        if input_data.nutrition_score is not None
+        else 100.0
+    )
+    effective_training_quality = (
+        input_data.training_quality
+        if input_data.training_quality is not None
+        else 100.0
+    )
+
     readiness_factor = calculate_readiness_factor(
         adherence_score=decision_adherence,
         recovery_score=decision_recovery,
@@ -566,8 +722,8 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
         sleep_quality=decision_sleep,
         plateau_probability=decision_plateau,
         injury_risk=decision_injury,
-        nutrition_score=100.0,
-        training_quality=100.0,
+        nutrition_score=effective_nutrition_score,
+        training_quality=effective_training_quality,
         motivation_score=100.0,
     )
 
@@ -715,14 +871,33 @@ def _parse_log_date(val: Any) -> Optional[date]:
     return None
 
 
-def _safe_float(val: Any) -> Optional[float]:
-    """Safely casts a value to float, returning None on failure or if val is None."""
-    if val is None:
-        return None
-    try:
-        return float(val)
-    except (ValueError, TypeError):
-        return None
+def calculate_observed_days(daily_logs: List[Dict[str, Any]]) -> int:
+    """
+    Computes the observed calendar-day span from daily logs.
+
+    If valid dates exist, computes the calendar span from earliest to latest log:
+        (latest_date - earliest_date).days + 1
+    ensuring it is at least len(daily_logs).
+    If no valid dates exist, falls back to the count of logs (log_count).
+    Returns 0 if daily_logs is empty.
+    """
+    if not daily_logs:
+        return 0
+
+    valid_dates: List[date] = []
+    for log in daily_logs:
+        if isinstance(log, dict):
+            d = _parse_log_date(log.get("log_date"))
+            if d is not None:
+                valid_dates.append(d)
+
+    if valid_dates:
+        earliest = min(valid_dates)
+        latest = max(valid_dates)
+        calendar_span = (latest - earliest).days + 1
+        return max(calendar_span, len(daily_logs))
+
+    return len(daily_logs)
 
 
 def aggregate_daily_logs(
@@ -742,6 +917,10 @@ def aggregate_daily_logs(
         - days_with_calorie_data: count of logs where calories_consumed is not None
         - days_with_target_calories: 0 (DailyLog does not persist target calories)
         - average_energy_rating: arithmetic mean of non-null energy ratings
+        - average_calories_consumed: arithmetic mean of non-null calories_consumed
+        - average_protein_consumed_g: arithmetic mean of non-null protein_consumed_g
+        - average_carbs_consumed_g: arithmetic mean of non-null carbs_consumed_g
+        - average_fat_consumed_g: arithmetic mean of non-null fat_consumed_g
     """
     if not daily_logs:
         return {
@@ -754,12 +933,20 @@ def aggregate_daily_logs(
             "days_with_calorie_data": 0,
             "days_with_target_calories": 0,
             "average_energy_rating": None,
+            "average_calories_consumed": None,
+            "average_protein_consumed_g": None,
+            "average_carbs_consumed_g": None,
+            "average_fat_consumed_g": None,
         }
 
     total_logs = len(daily_logs)
     completed_workouts = 0
     days_with_calorie_data = 0
     energy_ratings: List[float] = []
+    calories_list: List[float] = []
+    protein_list: List[float] = []
+    carbs_list: List[float] = []
+    fat_list: List[float] = []
 
     # Valid dated logs sorted chronologically without mutating input
     valid_dated_logs: List[tuple[date, Dict[str, Any]]] = []
@@ -781,6 +968,23 @@ def aggregate_daily_logs(
         if energy_val is not None:
             energy_ratings.append(energy_val)
 
+        # Nutrition macro aggregation
+        cal_val = _safe_float(log.get("calories_consumed"))
+        if cal_val is not None and cal_val >= 0:
+            calories_list.append(cal_val)
+
+        pro_val = _safe_float(log.get("protein_consumed_g"))
+        if pro_val is not None and pro_val >= 0:
+            protein_list.append(pro_val)
+
+        carb_val = _safe_float(log.get("carbs_consumed_g"))
+        if carb_val is not None and carb_val >= 0:
+            carbs_list.append(carb_val)
+
+        fat_val = _safe_float(log.get("fat_consumed_g"))
+        if fat_val is not None and fat_val >= 0:
+            fat_list.append(fat_val)
+
         # Date parsing for time-based trends
         parsed_date = _parse_log_date(log.get("log_date"))
         if parsed_date is not None:
@@ -793,6 +997,26 @@ def aggregate_daily_logs(
     average_energy_rating = (
         round(sum(energy_ratings) / len(energy_ratings), 2)
         if energy_ratings
+        else None
+    )
+    average_calories_consumed = (
+        round(sum(calories_list) / len(calories_list), 2)
+        if calories_list
+        else None
+    )
+    average_protein_consumed_g = (
+        round(sum(protein_list) / len(protein_list), 2)
+        if protein_list
+        else None
+    )
+    average_carbs_consumed_g = (
+        round(sum(carbs_list) / len(carbs_list), 2)
+        if carbs_list
+        else None
+    )
+    average_fat_consumed_g = (
+        round(sum(fat_list) / len(fat_list), 2)
+        if fat_list
         else None
     )
 
@@ -845,6 +1069,10 @@ def aggregate_daily_logs(
         "days_with_calorie_data": days_with_calorie_data,
         "days_with_target_calories": days_with_target_calories,
         "average_energy_rating": average_energy_rating,
+        "average_calories_consumed": average_calories_consumed,
+        "average_protein_consumed_g": average_protein_consumed_g,
+        "average_carbs_consumed_g": average_carbs_consumed_g,
+        "average_fat_consumed_g": average_fat_consumed_g,
     }
 
 
@@ -875,8 +1103,9 @@ def prepare_adaptation_input(
         7. Passes latest_journal_summary into AdaptationInput.
         8. Passes latest_journal_sentiment through normalize_journal_sentiment() before
            creating AdaptationInput.
-        9. Does NOT compute readiness, adjustments, recommendations, or call
-           compute_adaptation().
+        9. Computes empirical nutrition_score and training_quality from progress and targets.
+        10. Does NOT compute readiness, adjustments, recommendations, or call
+            compute_adaptation().
 
     If a required profile field is missing, Pydantic validation will raise
     rather than silently inventing a default value.
@@ -903,6 +1132,38 @@ def prepare_adaptation_input(
     raw_sentiment = journal.get("latest_journal_sentiment")
     normalized_sentiment = normalize_journal_sentiment(raw_sentiment)
 
+    # Compute empirical nutrition and training signals
+    calculated_nutrition_score: Optional[float] = None
+    calculated_training_quality: Optional[float] = None
+
+    if progress.get("log_count", 0) > 0:
+        calculated_nutrition_score = score_nutrition(
+            actual_calories=progress.get("average_calories_consumed"),
+            target_calories=target_metrics.get("target_calories"),
+            actual_protein_g=progress.get("average_protein_consumed_g"),
+            target_protein_g=target_metrics.get("protein_g"),
+            actual_carbs_g=progress.get("average_carbs_consumed_g"),
+            target_carbs_g=target_metrics.get("carbs_g"),
+            actual_fat_g=progress.get("average_fat_consumed_g"),
+            target_fat_g=target_metrics.get("fat_g"),
+        )
+
+        has_workout_data = any(
+            isinstance(log, dict) and "workout_completed" in log and log.get("workout_completed") is not None
+            for log in daily_logs
+        )
+        planned_workouts = profile.get("workout_days_per_week")
+        completed_workouts = progress.get("completed_workouts") if has_workout_data else None
+        energy_rating = progress.get("average_energy_rating")
+
+        observed_days = calculate_observed_days(daily_logs)
+        calculated_training_quality = score_training_quality(
+            completed_workouts=completed_workouts,
+            planned_workouts=planned_workouts,
+            average_energy_rating=energy_rating,
+            window_days=observed_days,
+        )
+
     return AdaptationInput(
         current_weight_kg=current_weight,  # type: ignore[arg-type]
         target_weight_kg=profile.get("target_weight_kg"),  # type: ignore[arg-type]
@@ -914,6 +1175,8 @@ def prepare_adaptation_input(
         workout_days_per_week=profile.get("workout_days_per_week"),  # type: ignore[arg-type]
         experience_level=profile.get("experience_level"),  # type: ignore[arg-type]
         log_count=progress["log_count"],
+        nutrition_score=calculated_nutrition_score,
+        training_quality=calculated_training_quality,
         weight_change_kg_7d=progress.get("weight_change_kg_7d"),
         weight_change_kg_14d=progress.get("weight_change_kg_14d"),
         weight_change_kg_28d=progress.get("weight_change_kg_28d"),

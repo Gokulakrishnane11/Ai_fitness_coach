@@ -39,6 +39,10 @@ def test_aggregate_daily_logs_empty_logs():
         "days_with_calorie_data": 0,
         "days_with_target_calories": 0,
         "average_energy_rating": None,
+        "average_calories_consumed": None,
+        "average_protein_consumed_g": None,
+        "average_carbs_consumed_g": None,
+        "average_fat_consumed_g": None,
     }
 
 
@@ -279,3 +283,53 @@ def test_aggregate_daily_logs_deterministic_repeated_calls():
     for _ in range(5):
         subsequent = aggregate_daily_logs(logs)
         assert subsequent == first
+
+
+def test_aggregate_daily_logs_nutrition_macros():
+    """Verify nutrition macro aggregation computes correct arithmetic means."""
+    logs = [
+        {
+            "log_date": "2026-09-01",
+            "calories_consumed": 2000,
+            "protein_consumed_g": 150,
+            "carbs_consumed_g": 200,
+            "fat_consumed_g": 60,
+        },
+        {
+            "log_date": "2026-09-02",
+            "calories_consumed": 2200,
+            "protein_consumed_g": 160,
+            "carbs_consumed_g": 220,
+            "fat_consumed_g": 70,
+        },
+    ]
+    result = aggregate_daily_logs(logs)
+    assert result["average_calories_consumed"] == 2100.0
+    assert result["average_protein_consumed_g"] == 155.0
+    assert result["average_carbs_consumed_g"] == 210.0
+    assert result["average_fat_consumed_g"] == 65.0
+
+
+def test_aggregate_daily_logs_nutrition_missing_macros():
+    """Verify days without macro entries do not count as zero intake."""
+    logs = [
+        {
+            "log_date": "2026-09-01",
+            "calories_consumed": 2000,
+            "protein_consumed_g": 160,
+            "carbs_consumed_g": None,
+            "fat_consumed_g": None,
+        },
+        {
+            "log_date": "2026-09-02",
+            "calories_consumed": 2200,
+            "protein_consumed_g": None,
+            "carbs_consumed_g": None,
+            "fat_consumed_g": None,
+        },
+    ]
+    result = aggregate_daily_logs(logs)
+    assert result["average_calories_consumed"] == 2100.0
+    assert result["average_protein_consumed_g"] == 160.0
+    assert result["average_carbs_consumed_g"] is None
+    assert result["average_fat_consumed_g"] is None

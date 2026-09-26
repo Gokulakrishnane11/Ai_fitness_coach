@@ -317,3 +317,133 @@ def test_inputs_remain_unmodified_including_journals():
     assert journals == journals_copy
     assert journals[0]["created_at"] == journals_copy[0]["created_at"]
 
+
+def test_adaptation_input_propagation_with_nutrition_and_training():
+    """Verify nutrition_score and training_quality are calculated and propagated to AdaptationInput."""
+    profile = _make_profile(workout_days_per_week=4)
+    logs = [
+        {
+            "log_date": "2026-09-01",
+            "weight_kg": 82.0,
+            "calories_consumed": 2100,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 200.0,
+            "fat_consumed_g": 60.0,
+            "workout_completed": True,
+            "energy_rating": 8,
+        },
+        {
+            "log_date": "2026-09-02",
+            "weight_kg": 81.8,
+            "calories_consumed": 2100,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 200.0,
+            "fat_consumed_g": 60.0,
+            "workout_completed": True,
+            "energy_rating": 8,
+        },
+        {
+            "log_date": "2026-09-03",
+            "weight_kg": 81.7,
+            "calories_consumed": 2100,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 200.0,
+            "fat_consumed_g": 60.0,
+            "workout_completed": True,
+            "energy_rating": 8,
+        },
+    ]
+
+    result = prepare_adaptation_input(profile, logs)
+    # Exact targets met -> nutrition_score 100.0
+    assert result.nutrition_score == 100.0
+    # Over 3 days, expected workouts = 4 * (3 / 7) = 1.714
+    # 3 completed workouts >= 1.714 -> workout adherence is 100.0% (clamped)
+    # Energy rating 8 -> 80.0
+    # Training quality = (100.0 * 0.60) + (80.0 * 0.40) = 60.0 + 32.0 = 92.0
+    assert result.training_quality == 92.0
+
+
+def test_adaptation_input_propagation_with_7day_window():
+    """Verify training quality calculation with a standard 7-day window."""
+    profile = _make_profile(workout_days_per_week=4)
+    logs = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "weight_kg": 82.0,
+            "calories_consumed": 2100,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 200.0,
+            "fat_consumed_g": 60.0,
+            "workout_completed": (i in (1, 3, 5)),  # 3 completed workouts out of 7 days
+            "energy_rating": 8,
+        }
+        for i in range(1, 8)
+    ]
+
+    result = prepare_adaptation_input(profile, logs)
+    assert result.log_count == 7
+    # 3 of 4 expected workouts in 7 days -> 75.0% adherence
+    # (75.0 * 0.60) + (80.0 * 0.40) = 45.0 + 32.0 = 77.0
+    assert result.training_quality == 77.0
+
+
+def test_adaptation_input_propagation_with_missing_nutrition_and_training():
+    """Verify nutrition_score and training_quality remain None when underlying data is absent."""
+    profile = _make_profile()
+    # Weight-only logs with no nutrition or training data
+    logs = [
+        {"log_date": "2026-09-01", "weight_kg": 82.0},
+        {"log_date": "2026-09-02", "weight_kg": 81.8},
+        {"log_date": "2026-09-03", "weight_kg": 81.6},
+    ]
+
+    result = prepare_adaptation_input(profile, logs)
+    assert result.nutrition_score is None
+    assert result.training_quality is None
+
+
+def test_adaptation_input_propagation_with_date_gaps():
+    """Verify logs with date gaps span the calendar days rather than log_count alone."""
+    profile = _make_profile(workout_days_per_week=4)
+    # 3 logs spanning 7 calendar days (Sept 1 to Sept 7)
+    logs = [
+        {
+            "log_date": "2026-09-01",
+            "weight_kg": 82.0,
+            "calories_consumed": 2100,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 200.0,
+            "fat_consumed_g": 60.0,
+            "workout_completed": True,
+            "energy_rating": 8,
+        },
+        {
+            "log_date": "2026-09-04",
+            "weight_kg": 81.8,
+            "calories_consumed": 2100,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 200.0,
+            "fat_consumed_g": 60.0,
+            "workout_completed": True,
+            "energy_rating": 8,
+        },
+        {
+            "log_date": "2026-09-07",
+            "weight_kg": 81.6,
+            "calories_consumed": 2100,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 200.0,
+            "fat_consumed_g": 60.0,
+            "workout_completed": True,
+            "energy_rating": 8,
+        },
+    ]
+
+    result = prepare_adaptation_input(profile, logs)
+    # log_count is 3, but calendar span is 7 days
+    assert result.log_count == 3
+    # Over 7 calendar days, expected workouts = 4 * (7 / 7) = 4.0
+    # 3 completed workouts -> 3 / 4.0 = 75.0% adherence
+    # Training quality = (75.0 * 0.60) + (80.0 * 0.40) = 45.0 + 32.0 = 77.0
+    assert result.training_quality == 77.0

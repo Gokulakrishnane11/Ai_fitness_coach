@@ -293,6 +293,8 @@ def test_adaptation_input_optional_fields_accept_none():
     assert minimal.weight_change_kg_28d is None
     assert minimal.latest_journal_summary is None
     assert minimal.latest_journal_sentiment is None
+    assert minimal.nutrition_score is None
+    assert minimal.training_quality is None
 
 
 @pytest.mark.parametrize("goal", ["fat_loss", "muscle_gain", "weight_gain", "recomposition"])
@@ -442,5 +444,41 @@ def test_adaptation_input_negative_log_count_rejected():
             workout_days_per_week=3,
             experience_level="beginner",
             log_count=-1,
+        )
+
+
+@pytest.mark.parametrize("invalid_score", [-5.0, 105.0])
+def test_adaptation_input_nutrition_score_bounds_rejected(invalid_score):
+    with pytest.raises(ValidationError):
+        AdaptationInput(
+            current_weight_kg=80.0,
+            target_weight_kg=75.0,
+            goal_type="fat_loss",
+            target_calories=2000.0,
+            target_protein_g=150.0,
+            target_carbs_g=200.0,
+            target_fat_g=60.0,
+            workout_days_per_week=3,
+            experience_level="beginner",
+            log_count=5,
+            nutrition_score=invalid_score,
+        )
+
+
+@pytest.mark.parametrize("invalid_score", [-5.0, 105.0])
+def test_adaptation_input_training_quality_bounds_rejected(invalid_score):
+    with pytest.raises(ValidationError):
+        AdaptationInput(
+            current_weight_kg=80.0,
+            target_weight_kg=75.0,
+            goal_type="fat_loss",
+            target_calories=2000.0,
+            target_protein_g=150.0,
+            target_carbs_g=200.0,
+            target_fat_g=60.0,
+            workout_days_per_week=3,
+            experience_level="beginner",
+            log_count=5,
+            training_quality=invalid_score,
         )
 
