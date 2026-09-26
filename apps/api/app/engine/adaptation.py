@@ -1164,6 +1164,12 @@ def prepare_adaptation_input(
             window_days=observed_days,
         )
 
+    calculated_plateau_probability = calculate_plateau_probability(
+        weight_change_14d_kg=progress.get("weight_change_kg_14d"),
+        weight_change_28d_kg=progress.get("weight_change_kg_28d"),
+        goal_type=profile.get("goal_type", ""),
+    )
+
     return AdaptationInput(
         current_weight_kg=current_weight,  # type: ignore[arg-type]
         target_weight_kg=profile.get("target_weight_kg"),  # type: ignore[arg-type]
@@ -1177,6 +1183,7 @@ def prepare_adaptation_input(
         log_count=progress["log_count"],
         nutrition_score=calculated_nutrition_score,
         training_quality=calculated_training_quality,
+        plateau_probability=calculated_plateau_probability,
         weight_change_kg_7d=progress.get("weight_change_kg_7d"),
         weight_change_kg_14d=progress.get("weight_change_kg_14d"),
         weight_change_kg_28d=progress.get("weight_change_kg_28d"),

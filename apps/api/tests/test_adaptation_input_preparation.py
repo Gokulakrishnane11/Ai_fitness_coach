@@ -6,7 +6,11 @@ raw profile + daily-log data into a validated AdaptationInput instance.
 import copy
 import pytest
 from pydantic import ValidationError
-from app.engine.adaptation import prepare_adaptation_input, AdaptationInput
+from app.engine.adaptation import (
+    prepare_adaptation_input,
+    AdaptationInput,
+    compute_adaptation,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -447,3 +451,161 @@ def test_adaptation_input_propagation_with_date_gaps():
     # 3 completed workouts -> 3 / 4.0 = 75.0% adherence
     # Training quality = (75.0 * 0.60) + (80.0 * 0.40) = 45.0 + 32.0 = 77.0
     assert result.training_quality == 77.0
+
+
+# ---------------------------------------------------------------------------
+# Plateau Probability Integration Tests (Task 11B-1)
+# ---------------------------------------------------------------------------
+
+def test_prepare_adaptation_input_fat_loss_plateau():
+    """Verify fat-loss plateau is detected when 14d and 28d weight trends stall (|14d| < 0.2 and |28d| < 0.4)."""
+    profile = _make_profile(goal_type="fat_loss")
+    logs = [
+        {"log_date": "2026-09-01", "weight_kg": 80.0, "calories_consumed": 2000, "workout_completed": True},
+        {"log_date": "2026-09-15", "weight_kg": 80.1, "calories_consumed": 2000, "workout_completed": True},
+        {"log_date": "2026-09-29", "weight_kg": 80.2, "calories_consumed": 2000, "workout_completed": True},
+    ]
+
+    result = prepare_adaptation_input(profile, logs)
+    # 14d change = 80.2 - 80.1 = 0.1
+    # 28d change = 80.2 - 80.0 = 0.2
+    assert result.plateau_probability == 80.0
+
+    decision = compute_adaptation(result)
+    assert decision.plateau_detected is True
+    assert decision.plateau_probability == 80
+    assert decision.objective_data_available is True
+    assert "Recent progress may indicate a plateau." in decision.actionable_recommendations
+    assert "Potential plateau detected" in decision.coaching_summary
+
+
+def test_prepare_adaptation_input_fat_loss_non_plateau():
+    """Verify fat-loss non-plateau evaluates to 0.0 when weight is actively changing."""
+    profile = _make_profile(goal_type="fat_loss")
+    logs = [
+        {"log_date": "2026-09-01", "weight_kg": 83.0, "calories_consumed": 1900, "workout_completed": True},
+        {"log_date": "2026-09-15", "weight_kg": 81.5, "calories_consumed": 1900, "workout_completed": True},
+        {"log_date": "2026-09-29", "weight_kg": 80.0, "calories_consumed": 1900, "workout_completed": True},
+    ]
+
+    result = prepare_adaptation_input(profile, logs)
+    # 14d change = 80.0 - 81.5 = -1.5
+    # 28d change = 80.0 - 83.0 = -3.0
+    assert result.plateau_probability == 0.0
+
+    decision = compute_adaptation(result)
+    assert decision.plateau_detected is False
+    assert decision.plateau_probability == 0
+    # Evaluated objective data is present (0.0 is an objective measurement)
+    assert decision.objective_data_available is True
+    assert "Recent progress may indicate a plateau." not in decision.actionable_recommendations
+
+
+def test_prepare_adaptation_input_insufficient_weight_history():
+    """Verify plateau_probability is None when weight history is insufficient (< 28 days or missing boundary dates)."""
+    profile = _make_profile(goal_type="fat_loss")
+    # Only 7 days of logs
+    logs_7d = [
+        {"log_date": "2026-09-01", "weight_kg": 80.0, "calories_consumed": 2000, "workout_completed": True},
+        {"log_date": "2026-09-07", "weight_kg": 79.8, "calories_consumed": 2000, "workout_completed": True},
+    ]
+
+    result = prepare_adaptation_input(profile, logs_7d)
+    assert result.plateau_probability is None
+
+    decision = compute_adaptation(result)
+    assert decision.plateau_detected is False
+    assert decision.plateau_probability == 0  # neutral placeholder
+    # No other primary objective signals provided -> objective_data_available is False
+    assert decision.objective_data_available is False
+
+
+def test_prepare_adaptation_input_muscle_and_weight_gain():
+    """Verify muscle_gain and weight_gain goals evaluate plateau thresholds (|14d| < 0.1 and |28d| < 0.2)."""
+    # Stalled muscle gain -> plateau
+    profile_stalled = _make_profile(goal_type="muscle_gain")
+    logs_stalled = [
+        {"log_date": "2026-09-01", "weight_kg": 70.0, "calories_consumed": 2500, "workout_completed": True},
+        {"log_date": "2026-09-15", "weight_kg": 70.05, "calories_consumed": 2500, "workout_completed": True},
+        {"log_date": "2026-09-29", "weight_kg": 70.08, "calories_consumed": 2500, "workout_completed": True},
+    ]
+    res_stalled = prepare_adaptation_input(profile_stalled, logs_stalled)
+    assert res_stalled.plateau_probability == 80.0
+    dec_stalled = compute_adaptation(res_stalled)
+    assert dec_stalled.plateau_detected is True
+    assert dec_stalled.objective_data_available is True
+
+    # Active weight gain -> non-plateau
+    profile_gain = _make_profile(goal_type="weight_gain")
+    logs_gain = [
+        {"log_date": "2026-09-01", "weight_kg": 70.0, "calories_consumed": 2700, "workout_completed": True},
+        {"log_date": "2026-09-15", "weight_kg": 70.5, "calories_consumed": 2700, "workout_completed": True},
+        {"log_date": "2026-09-29", "weight_kg": 71.0, "calories_consumed": 2700, "workout_completed": True},
+    ]
+    res_gain = prepare_adaptation_input(profile_gain, logs_gain)
+    assert res_gain.plateau_probability == 0.0
+    dec_gain = compute_adaptation(res_gain)
+    assert dec_gain.plateau_detected is False
+    assert dec_gain.objective_data_available is True
+
+
+def test_prepare_adaptation_input_recomposition():
+    """Verify recomposition preserves None for plateau_probability (weight alone cannot determine recomposition plateau)."""
+    profile = _make_profile(goal_type="recomposition")
+    logs = [
+        {"log_date": "2026-09-01", "weight_kg": 75.0, "calories_consumed": 2200, "workout_completed": True},
+        {"log_date": "2026-09-15", "weight_kg": 75.0, "calories_consumed": 2200, "workout_completed": True},
+        {"log_date": "2026-09-29", "weight_kg": 75.0, "calories_consumed": 2200, "workout_completed": True},
+    ]
+
+    result = prepare_adaptation_input(profile, logs)
+    assert result.plateau_probability is None
+
+    decision = compute_adaptation(result)
+    assert decision.plateau_detected is False
+    assert decision.plateau_probability == 0
+    assert decision.objective_data_available is False
+
+
+def test_objective_data_available_flips_true_on_plateau_evaluation():
+    """Verify objective_data_available flips to True strictly when plateau is evaluated as a primary objective signal."""
+    profile = _make_profile(goal_type="fat_loss")
+    logs = [
+        {"log_date": "2026-09-01", "weight_kg": 80.0},
+        {"log_date": "2026-09-15", "weight_kg": 80.0},
+        {"log_date": "2026-09-29", "weight_kg": 80.0},
+    ]
+    result = prepare_adaptation_input(profile, logs)
+    assert result.plateau_probability == 80.0
+    decision = compute_adaptation(result)
+    assert decision.objective_data_available is True
+
+
+def test_existing_objective_data_regression_behavior_intact():
+    """Verify that when weight history is insufficient for plateau (< 14d/28d),
+    objective_data_available remains False even if empirical nutrition and training scores are present."""
+    profile = _make_profile(goal_type="fat_loss")
+    # 4 days of logs: nutrition and training exist, but plateau cannot be computed
+    logs = [
+        {
+            "log_date": f"2026-09-{18 - i:02d}",
+            "weight_kg": 82.0,
+            "calories_consumed": 2100,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 200.0,
+            "fat_consumed_g": 60.0,
+            "workout_completed": True,
+            "energy_rating": 8,
+        }
+        for i in range(4)
+    ]
+    result = prepare_adaptation_input(profile, logs)
+    assert result.nutrition_score is not None
+    assert result.training_quality is not None
+    assert result.plateau_probability is None
+
+    decision = compute_adaptation(result)
+    # objective_data_available strictly tracks primary physiological signals; remains False here
+    assert decision.objective_data_available is False
+    assert decision.plateau_probability == 0
+    assert decision.plateau_detected is False
