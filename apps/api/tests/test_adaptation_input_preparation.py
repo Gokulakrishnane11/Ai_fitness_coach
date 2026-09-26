@@ -609,3 +609,254 @@ def test_existing_objective_data_regression_behavior_intact():
     assert decision.objective_data_available is False
     assert decision.plateau_probability == 0
     assert decision.plateau_detected is False
+
+
+# ---------------------------------------------------------------------------
+# Adherence Integration Tests (Task 11B-2)
+# ---------------------------------------------------------------------------
+
+def test_prepare_adaptation_input_no_adherence_data_under_seven_logs():
+    """Verify adherence_percent is None when log_count < 7, preserving neutral decision defaults."""
+    profile = _make_profile(workout_days_per_week=4)
+    logs_4d = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "calories_consumed": 2100,
+            "workout_completed": True,
+        }
+        for i in range(1, 5)
+    ]
+    result = prepare_adaptation_input(profile, logs_4d)
+    assert result.adherence_percent is None
+
+    decision = compute_adaptation(result)
+    assert decision.adherence_score == 100
+    assert decision.objective_data_available is False
+
+
+def test_prepare_adaptation_input_no_adherence_data_seven_logs_weight_only():
+    """Verify adherence_percent is None when 7 logs contain no workout or nutrition data."""
+    profile = _make_profile()
+    logs_weight_only = [
+        {"log_date": f"2026-09-{i:02d}", "weight_kg": 80.0}
+        for i in range(1, 8)
+    ]
+    result = prepare_adaptation_input(profile, logs_weight_only)
+    assert result.adherence_percent is None
+
+    decision = compute_adaptation(result)
+    assert decision.adherence_score == 100
+    assert decision.objective_data_available is False
+
+
+def test_prepare_adaptation_input_workout_only_adherence():
+    """Verify workout-only logging evaluates workout adherence without penalizing missing nutrition."""
+    profile = _make_profile(workout_days_per_week=4)
+    # 7 days, 3 completed workouts, no calorie data in any log
+    logs = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": i in (1, 3, 5),  # 3 completed
+        }
+        for i in range(1, 8)
+    ]
+    result = prepare_adaptation_input(profile, logs)
+    # 3 / 4.0 = 75.0%
+    assert result.adherence_percent == 75.0
+
+    decision = compute_adaptation(result)
+    assert decision.adherence_score == 75
+    assert decision.objective_data_available is True
+
+
+def test_prepare_adaptation_input_nutrition_only_adherence():
+    """Verify nutrition-only logging evaluates nutrition adherence without penalizing missing workouts."""
+    profile = _make_profile(workout_days_per_week=4)
+    # 7 days, 6 days with calories logged, workout_completed never logged
+    logs = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "calories_consumed": 2100 if i <= 6 else None,
+        }
+        for i in range(1, 8)
+    ]
+    result = prepare_adaptation_input(profile, logs)
+    # 6 / 7 = 85.714% -> 85.71%
+    assert result.adherence_percent == 85.71
+
+    decision = compute_adaptation(result)
+    assert decision.adherence_score == 86
+    assert decision.objective_data_available is True
+
+
+def test_prepare_adaptation_input_both_workout_and_nutrition_adherence():
+    """Verify both categories are averaged via arithmetic mean."""
+    profile = _make_profile(workout_days_per_week=4)
+    # 7 days, 3 workouts (75.0%), 5 calorie days (5/7 = 71.42857%)
+    # mean = (75.0 + 71.42857) / 2 = 73.214% -> 73.21%
+    logs = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": i in (1, 3, 5),
+            "calories_consumed": 2100 if i <= 5 else None,
+        }
+        for i in range(1, 8)
+    ]
+    result = prepare_adaptation_input(profile, logs)
+    assert result.adherence_percent == 73.21
+
+    decision = compute_adaptation(result)
+    assert decision.adherence_score == 73
+    assert decision.objective_data_available is True
+
+
+def test_prepare_adaptation_input_partial_missing_values():
+    """Verify partial or missing data handling across daily logs."""
+    profile = _make_profile(workout_days_per_week=4)
+
+    # Some days have None for workout_completed (e.g. only 4 days have workout status, 2 completed)
+    logs_partial_workouts = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": True if i in (1, 2) else (False if i in (3, 4) else None),
+            "calories_consumed": 2100 if i <= 5 else None,
+        }
+        for i in range(1, 8)
+    ]
+    result = prepare_adaptation_input(profile, logs_partial_workouts)
+    # completed workouts = 2 / 4 = 50.0%
+    # calories logged = 5 / 7 = 71.43%
+    # mean = (50.0 + 71.42857) / 2 = 60.71%
+    assert result.adherence_percent == 60.71
+
+    # Nutrition only partially logged (3 of 7 days), workouts entirely omitted
+    logs_partial_nut = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "calories_consumed": 2100 if i <= 3 else None,
+        }
+        for i in range(1, 8)
+    ]
+    res_nut = prepare_adaptation_input(profile, logs_partial_nut)
+    # 3 / 7 = 42.857% -> 42.86%
+    assert res_nut.adherence_percent == 42.86
+
+
+def test_prepare_adaptation_input_zero_completed_workouts():
+    """Verify 0 completed workouts yields 0.0% workout adherence."""
+    profile = _make_profile(workout_days_per_week=4)
+    logs_zero_workouts = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": False,
+        }
+        for i in range(1, 8)
+    ]
+    result = prepare_adaptation_input(profile, logs_zero_workouts)
+    assert result.adherence_percent == 0.0
+
+    decision = compute_adaptation(result)
+    assert decision.adherence_score == 0
+    assert decision.objective_data_available is True
+
+
+def test_prepare_adaptation_input_poor_adherence():
+    """Verify poor adherence in workouts and nutrition produces proportionally low score."""
+    profile = _make_profile(workout_days_per_week=4)
+    # 1/4 workouts completed = 25.0%, 2/7 calorie days logged = 28.5714%
+    # Mean = (25.0 + 28.5714) / 2 = 26.7857% -> 26.79%
+    logs_poor = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": (i == 1),
+            "calories_consumed": 2100 if i <= 2 else None,
+        }
+        for i in range(1, 8)
+    ]
+    result = prepare_adaptation_input(profile, logs_poor)
+    assert result.adherence_percent == 26.79
+
+    decision = compute_adaptation(result)
+    assert decision.adherence_score == 27
+    assert decision.objective_data_available is True
+
+
+def test_prepare_adaptation_input_full_adherence():
+    """Verify full adherence in workouts and nutrition produces 100.0%."""
+    profile = _make_profile(workout_days_per_week=4)
+    logs_full = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": (i <= 4),  # exactly 4 completed
+            "calories_consumed": 2100,      # 7/7
+        }
+        for i in range(1, 8)
+    ]
+    result = prepare_adaptation_input(profile, logs_full)
+    assert result.adherence_percent == 100.0
+
+    decision = compute_adaptation(result)
+    assert decision.adherence_score == 100
+    assert decision.objective_data_available is True
+
+
+def test_prepare_adaptation_input_boundary_and_clamping_behavior():
+    """Verify completed workouts exceeding planned are clamped strictly to 100.0%."""
+    profile = _make_profile(workout_days_per_week=4)
+    logs_over = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": True,  # 7 workouts completed > 4 planned
+            "calories_consumed": 2100,  # 7/7
+        }
+        for i in range(1, 8)
+    ]
+    result = prepare_adaptation_input(profile, logs_over)
+    # Workout 7/4 = 175% clamped to 100.0%, Nutrition 7/7 = 100.0% -> 100.0%
+    assert result.adherence_percent == 100.0
+
+    decision = compute_adaptation(result)
+    assert decision.adherence_score == 100
+
+
+def test_prepare_adaptation_input_propagation_into_decision_and_readiness():
+    """Verify adherence score modulates the mathematical readiness_factor calculation."""
+    profile = _make_profile(workout_days_per_week=4)
+
+    # 1. Full adherence (100%)
+    logs_full = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": (i <= 4),
+            "calories_consumed": 2100,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 200.0,
+            "fat_consumed_g": 60.0,
+        }
+        for i in range(1, 8)
+    ]
+    inp_full = prepare_adaptation_input(profile, logs_full)
+    dec_full = compute_adaptation(inp_full)
+
+    # 2. Poor adherence (1 workout = 25.0%, 1 calorie log = 1/7 = 14.29% -> mean = 19.64%)
+    logs_poor = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": (i == 1),
+            "calories_consumed": 2100 if i == 1 else None,
+            "protein_consumed_g": 165.0 if i == 1 else None,
+            "carbs_consumed_g": 200.0 if i == 1 else None,
+            "fat_consumed_g": 60.0 if i == 1 else None,
+        }
+        for i in range(1, 8)
+    ]
+    inp_poor = prepare_adaptation_input(profile, logs_poor)
+    dec_poor = compute_adaptation(inp_poor)
+
+    assert inp_full.adherence_percent == 100.0
+    assert dec_full.adherence_score == 100
+
+    assert inp_poor.adherence_percent < inp_full.adherence_percent
+    assert dec_poor.adherence_score < dec_full.adherence_score
+    # Adherence score accounts for 30% of positive readiness: lower adherence directly lowers readiness_factor
+    assert dec_poor.readiness_factor < dec_full.readiness_factor

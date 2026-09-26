@@ -450,9 +450,9 @@ def calculate_weight_change_percent(
 
 def calculate_adherence_percent(
     completed_workouts: Optional[int],
-    planned_workouts: Optional[int],
+    planned_workouts: Optional[Union[int, float]],
     days_with_calorie_data: Optional[int],
-    days_with_target_calories: Optional[int],
+    days_with_target_calories: Optional[Union[int, float]],
 ) -> Optional[float]:
     """
     Calculates overall adherence percentage (0-100).
@@ -1078,6 +1078,25 @@ def aggregate_daily_logs(
 
 # ---------------------------------------------------------------------------
 DEFAULT_JOURNAL_FRESHNESS_DAYS = 7
+MINIMUM_ADHERENCE_LOGS = 7
+MINIMUM_ADHERENCE_DAYS = 7
+
+
+def has_sufficient_adherence_data(
+    log_count: int,
+    observed_days: int,
+    minimum_logs: int = MINIMUM_ADHERENCE_LOGS,
+    minimum_days: int = MINIMUM_ADHERENCE_DAYS,
+) -> bool:
+    """
+    Determines whether sufficient daily logs and observation window exist to
+    evaluate empirical weekly adherence.
+    Requires at least 7 logs and at least 7 calendar days of observation.
+    """
+    try:
+        return int(log_count) >= int(minimum_logs) and int(observed_days) >= int(minimum_days)
+    except Exception:
+        return False
 
 
 def prepare_adaptation_input(
@@ -1104,7 +1123,8 @@ def prepare_adaptation_input(
         8. Passes latest_journal_sentiment through normalize_journal_sentiment() before
            creating AdaptationInput.
         9. Computes empirical nutrition_score and training_quality from progress and targets.
-        10. Does NOT compute readiness, adjustments, recommendations, or call
+        10. Computes empirical adherence_percent when sufficient logging history exists (>= 7 logs and >= 7 days).
+        11. Does NOT compute readiness, adjustments, recommendations, or call
             compute_adaptation().
 
     If a required profile field is missing, Pydantic validation will raise
@@ -1132,9 +1152,10 @@ def prepare_adaptation_input(
     raw_sentiment = journal.get("latest_journal_sentiment")
     normalized_sentiment = normalize_journal_sentiment(raw_sentiment)
 
-    # Compute empirical nutrition and training signals
+    # Compute empirical nutrition, training, and adherence signals
     calculated_nutrition_score: Optional[float] = None
     calculated_training_quality: Optional[float] = None
+    calculated_adherence_percent: Optional[float] = None
 
     if progress.get("log_count", 0) > 0:
         calculated_nutrition_score = score_nutrition(
@@ -1164,6 +1185,36 @@ def prepare_adaptation_input(
             window_days=observed_days,
         )
 
+        # Adherence calculation: requires sufficient data window (at least 7 logs and 7 calendar days)
+        if has_sufficient_adherence_data(progress.get("log_count", 0), observed_days):
+            has_calorie_data = any(
+                isinstance(log, dict) and log.get("calories_consumed") is not None
+                for log in daily_logs
+            )
+
+            planned_workouts_adh: Optional[float] = None
+            completed_workouts_adh: Optional[int] = None
+            pw = _safe_float(profile.get("workout_days_per_week"))
+            if has_workout_data and pw is not None and pw > 0:
+                completed_workouts_adh = progress.get("completed_workouts", 0)
+                planned_workouts_adh = pw * (float(observed_days) / 7.0)
+
+            days_with_calorie_data_adh: Optional[int] = None
+            days_with_target_calories_adh: Optional[Union[int, float]] = None
+            target_cals = _safe_float(
+                target_metrics.get("target_calories") or profile.get("target_calories")
+            )
+            if has_calorie_data and target_cals is not None and target_cals > 0:
+                days_with_calorie_data_adh = progress.get("days_with_calorie_data", 0)
+                days_with_target_calories_adh = observed_days
+
+            calculated_adherence_percent = calculate_adherence_percent(
+                completed_workouts=completed_workouts_adh,
+                planned_workouts=planned_workouts_adh,
+                days_with_calorie_data=days_with_calorie_data_adh,
+                days_with_target_calories=days_with_target_calories_adh,
+            )
+
     calculated_plateau_probability = calculate_plateau_probability(
         weight_change_14d_kg=progress.get("weight_change_kg_14d"),
         weight_change_28d_kg=progress.get("weight_change_kg_28d"),
@@ -1181,6 +1232,7 @@ def prepare_adaptation_input(
         workout_days_per_week=profile.get("workout_days_per_week"),  # type: ignore[arg-type]
         experience_level=profile.get("experience_level"),  # type: ignore[arg-type]
         log_count=progress["log_count"],
+        adherence_percent=calculated_adherence_percent,
         nutrition_score=calculated_nutrition_score,
         training_quality=calculated_training_quality,
         plateau_probability=calculated_plateau_probability,
