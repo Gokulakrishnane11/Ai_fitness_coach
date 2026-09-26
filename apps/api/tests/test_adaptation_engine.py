@@ -442,3 +442,115 @@ def test_existing_objective_recommendations_remain_present_and_in_order():
     assert decision.actionable_recommendations == expected_order
 
 
+# ---------------------------------------------------------------------------
+# 10. Empirical Recommendations Tests (Task 11B-3)
+# ---------------------------------------------------------------------------
+
+ADH_REC = "Adherence score is low. Prioritize consistent workout completion and logging."
+NUT_REC = "Nutrition target alignment is low. Focus on meeting daily calorie and macro targets."
+TRN_REC = "Training quality is low. Review workout completion and session energy."
+
+
+def test_low_adherence_percent_adds_recommendation():
+    """1. adherence_percent=40 (< 60) appends adherence recommendation."""
+    inp = make_base_input(adherence_percent=40.0)
+    decision = compute_adaptation(inp)
+    assert ADH_REC in decision.actionable_recommendations
+
+
+def test_high_adherence_percent_adds_no_recommendation():
+    """2. adherence_percent=90 (>= 60) does not append adherence recommendation."""
+    inp = make_base_input(adherence_percent=90.0)
+    decision = compute_adaptation(inp)
+    assert ADH_REC not in decision.actionable_recommendations
+
+
+def test_none_adherence_percent_adds_no_recommendation():
+    """3. adherence_percent=None does not append adherence recommendation."""
+    inp = make_base_input(adherence_percent=None)
+    decision = compute_adaptation(inp)
+    assert ADH_REC not in decision.actionable_recommendations
+
+
+def test_low_nutrition_score_adds_recommendation():
+    """4. nutrition_score=45 (< 60) appends nutrition alignment recommendation."""
+    inp = make_base_input(nutrition_score=45.0)
+    decision = compute_adaptation(inp)
+    assert NUT_REC in decision.actionable_recommendations
+
+
+def test_high_nutrition_score_adds_no_recommendation():
+    """5. nutrition_score=90 (>= 60) does not append nutrition recommendation."""
+    inp = make_base_input(nutrition_score=90.0)
+    decision = compute_adaptation(inp)
+    assert NUT_REC not in decision.actionable_recommendations
+
+
+def test_none_nutrition_score_adds_no_recommendation():
+    """6. nutrition_score=None does not append nutrition recommendation."""
+    inp = make_base_input(nutrition_score=None)
+    decision = compute_adaptation(inp)
+    assert NUT_REC not in decision.actionable_recommendations
+
+
+def test_low_training_quality_adds_recommendation():
+    """7. training_quality=40 (< 60) appends training quality recommendation."""
+    inp = make_base_input(training_quality=40.0)
+    decision = compute_adaptation(inp)
+    assert TRN_REC in decision.actionable_recommendations
+
+
+def test_high_training_quality_adds_no_recommendation():
+    """8. training_quality=85 (>= 60) does not append training recommendation."""
+    inp = make_base_input(training_quality=85.0)
+    decision = compute_adaptation(inp)
+    assert TRN_REC not in decision.actionable_recommendations
+
+
+def test_none_training_quality_adds_no_recommendation():
+    """9. training_quality=None does not append training recommendation."""
+    inp = make_base_input(training_quality=None)
+    decision = compute_adaptation(inp)
+    assert TRN_REC not in decision.actionable_recommendations
+
+
+def test_multiple_low_empirical_signals_coexist():
+    """10. Multiple low empirical signals coexist cleanly without duplicate text."""
+    inp = make_base_input(
+        adherence_percent=45.0,
+        nutrition_score=50.0,
+        training_quality=40.0,
+    )
+    decision = compute_adaptation(inp)
+    assert ADH_REC in decision.actionable_recommendations
+    assert NUT_REC in decision.actionable_recommendations
+    assert TRN_REC in decision.actionable_recommendations
+    assert len(decision.actionable_recommendations) == 3
+
+
+def test_empirical_recommendations_maintain_ordering_with_physiological_and_journal():
+    """11 & 12. Ordering: Physiological -> Empirical -> Journal recommendations."""
+    inp = make_base_input(
+        recovery_score=75.0,
+        stress_score=70.0,
+        sleep_quality=45.0,
+        plateau_probability=85.0,
+        injury_risk=60.0,
+        adherence_percent=40.0,
+        nutrition_score=50.0,
+        training_quality=45.0,
+        latest_journal_sentiment="motivated",
+    )
+    decision = compute_adaptation(inp)
+
+    expected_order = [
+        "Stress score is elevated.",
+        "Sleep quality is low.",
+        "Recent progress may indicate a plateau.",
+        "Injury risk score is elevated.",
+        ADH_REC,
+        NUT_REC,
+        TRN_REC,
+        "High motivation noted in recent journal. Channel energy into structured training.",
+    ]
+    assert decision.actionable_recommendations == expected_order

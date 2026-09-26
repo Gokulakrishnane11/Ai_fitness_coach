@@ -740,6 +740,19 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
     if input_data.injury_risk is not None and eval_injury is not None and eval_injury >= 50:
         recommendations.append("Injury risk score is elevated.")
 
+    if input_data.adherence_percent is not None and eval_adherence is not None and eval_adherence < 60:
+        recommendations.append(
+            "Adherence score is low. Prioritize consistent workout completion and logging."
+        )
+    if input_data.nutrition_score is not None and input_data.nutrition_score < 60:
+        recommendations.append(
+            "Nutrition target alignment is low. Focus on meeting daily calorie and macro targets."
+        )
+    if input_data.training_quality is not None and input_data.training_quality < 60:
+        recommendations.append(
+            "Training quality is low. Review workout completion and session energy."
+        )
+
     has_objective_recommendations = bool(recommendations)
 
     # Contextual Journal Recommendations
