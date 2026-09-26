@@ -8,6 +8,7 @@ timestamps. These tests deliberately do not assert on coaching_summary text.
 """
 
 import copy
+from datetime import datetime, time, timedelta, timezone
 import inspect
 from unittest.mock import MagicMock, patch
 
@@ -90,8 +91,21 @@ def _journal_row(entry_id, created_at, sentiment):
     }
 
 
-EVENING_MOTIVATED = _journal_row("evening", "2026-09-15T18:00:00.123456+00:00", "motivated")
-MORNING_FATIGUED = _journal_row("morning", "2026-09-15T09:00:00.654321+00:00", "fatigued")
+# Explicit reference time and relative timestamps to guarantee freshness (< 7 days)
+# while preserving same-day ordering and microsecond timestamp resolution.
+_REF_TIME = datetime.now(timezone.utc)
+_SAME_DAY = (_REF_TIME - timedelta(days=1)).date()
+
+EVENING_MOTIVATED = _journal_row(
+    "evening",
+    datetime.combine(_SAME_DAY, time(18, 0, 0, 123456), tzinfo=timezone.utc).isoformat(),
+    "motivated",
+)
+MORNING_FATIGUED = _journal_row(
+    "morning",
+    datetime.combine(_SAME_DAY, time(9, 0, 0, 654321), tzinfo=timezone.utc).isoformat(),
+    "fatigued",
+)
 
 
 def _repos(profile=None, logs=None, journal=None):

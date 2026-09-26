@@ -7,6 +7,7 @@ defaults are unchanged in this task; objective_data_available tells consumers th
 measurements.
 """
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -146,10 +147,12 @@ def test_production_shaped_pipeline_reports_no_objective_data():
         }
         for i in range(4)
     ]
+    ref_time = datetime.now(timezone.utc)
+    fresh_created_at = (ref_time - timedelta(days=1)).isoformat()
     journal_repo.get_entries.return_value = [
         {
             "id": "j1",
-            "created_at": "2026-09-15T09:00:00+00:00",
+            "created_at": fresh_created_at,
             "sentiment_tag": "fatigued",
             "ai_feedback": {"summary": "s"},
         }
