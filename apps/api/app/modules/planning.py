@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends
 from app.core.security import get_current_user, UserContext
 from app.db.supabase import ProfileRepository
-from app.engine.adaptation import compute_adaptation_for_user, DietAdjustment
+from app.engine.adaptation import compute_adaptation_for_user, DietAdjustment, WorkoutAdjustment
 from app.engine.nutrition_rules import generate_deterministic_meal_plan
 from app.engine.workout_rules import generate_deterministic_workout_plan
 
@@ -28,6 +28,7 @@ class WorkoutPlanRequestSchema(BaseModel):
     goal_type: str = Field(..., pattern="^(fat_loss|muscle_gain|weight_gain|recomposition)$")
     workout_days_per_week: int = Field(4, ge=1, le=7)
     experience_level: str = Field("beginner", pattern="^(beginner|intermediate|advanced)$")
+    apply_adaptation: bool = Field(True, description="Whether to apply active adaptation adjustments if available")
 
 
 @router.post("/meal-plan")
@@ -62,9 +63,23 @@ def create_meal_plan(
 def create_workout_plan(
     payload: WorkoutPlanRequestSchema, user_ctx: UserContext = Depends(get_current_user)
 ):
-    """Generates a deterministic structured workout routine based on split rules."""
+    """Generates a deterministic structured workout routine based on split rules, applying user adaptation if active."""
+    workout_adjustment: Optional[WorkoutAdjustment] = None
+    if payload.apply_adaptation and user_ctx and user_ctx.user_id:
+        try:
+            profile = ProfileRepository.get_profile(user_ctx.user_id, user_ctx.access_token)
+            if profile:
+                decision = compute_adaptation_for_user(
+                    user_id=user_ctx.user_id,
+                    user_token=user_ctx.access_token,
+                )
+                workout_adjustment = decision.workout_adjustment
+        except (ValueError, KeyError):
+            workout_adjustment = None
+
     return generate_deterministic_workout_plan(
         goal_type=payload.goal_type,
         workout_days_per_week=payload.workout_days_per_week,
         experience_level=payload.experience_level,
+        workout_adjustment=workout_adjustment,
     )

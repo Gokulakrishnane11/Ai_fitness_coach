@@ -569,3 +569,180 @@ def test_meal_plan_api_live_muscle_gain_plateau_adaptation():
         assert plan_unadapted["target_carbs_g"] == 427.0
         assert plan_unadapted["target_fat_g"] == 88.0
         assert plan["achieved_calories"] > plan_unadapted["achieved_calories"]
+
+
+def test_workout_plan_api_baseline_unchanged():
+    """
+    1. Baseline workout API:
+    Calls POST /api/v1/planning/workout-plan without active adaptation.
+    Verifies that baseline split, sets, and days_per_week are returned unchanged.
+    """
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True):
+
+        payload = {
+            "goal_type": "fat_loss",
+            "workout_days_per_week": 4,
+            "experience_level": "intermediate"
+        }
+        res = client.post("/api/v1/planning/workout-plan", json=payload, headers=AUTH_HEADER)
+        assert res.status_code == 200
+        plan = res.json()
+        assert plan["split_type"] == "UPPER_LOWER"
+        assert plan["days_per_week"] == 4
+        assert plan["deload_active"] is False
+        assert plan["cardio_minutes"] == 0
+        assert plan["recovery_days"] == 0
+        assert len(plan["routine"]) == 2
+        # Baseline sets for Upper Strength
+        assert [ex["sets"] for ex in plan["routine"][0]["exercises"]] == [4, 4, 3, 3, 3]
+
+
+def test_workout_plan_api_live_fat_loss_plateau_cardio_finisher():
+    """
+    4. Fat-loss plateau seeded user:
+    Seeds offline DB with 29 daily logs representing a fat-loss plateau.
+    Adaptation engine produces cardio_minutes=30.
+    Calls POST /api/v1/planning/workout-plan with default apply_adaptation=True.
+    Verifies:
+      - plan["cardio_minutes"] == 30
+      - a 30-minute cardio finisher is appended to each day
+      - baseline sets (4, 4, 3, 3, 3) are preserved
+      - diet logic is not touched.
+    Also verifies:
+    2. Passing apply_adaptation=False ignores active adaptation and returns baseline.
+    """
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True):
+
+        profile = _valid_db_profile(goal_type="fat_loss", target_weight_kg=75.0)
+        db_mod._OFFLINE_TEST_DB["profiles"][TEST_USER_ID] = profile
+
+        for log in _plateau_logs_28d(calories=2254, protein_g=181.5, carbs_g=233.4, fat_g=66.0):
+            db_mod._OFFLINE_TEST_DB["daily_logs"][log["id"]] = dict(log)
+
+        payload = {
+            "goal_type": "fat_loss",
+            "workout_days_per_week": 4,
+            "experience_level": "intermediate"
+        }
+
+        # Adapted call
+        res = client.post("/api/v1/planning/workout-plan", json=payload, headers=AUTH_HEADER)
+        assert res.status_code == 200
+        plan = res.json()
+        assert plan["cardio_minutes"] == 30
+        assert plan["deload_active"] is False
+        for day in plan["routine"]:
+            assert len(day["exercises"]) == 6
+            finisher = day["exercises"][-1]
+            assert finisher["name"] == "Post-Workout Cardio (Zone 2 LISS)"
+            assert finisher["reps"] == "30 min"
+
+        # Unadapted call (apply_adaptation=False)
+        unadapted_payload = dict(payload, apply_adaptation=False)
+        res_unadapted = client.post("/api/v1/planning/workout-plan", json=unadapted_payload, headers=AUTH_HEADER)
+        assert res_unadapted.status_code == 200
+        plan_unadapted = res_unadapted.json()
+        assert plan_unadapted["cardio_minutes"] == 0
+        for day in plan_unadapted["routine"]:
+            assert len(day["exercises"]) == 5
+
+
+def test_workout_plan_api_live_high_fatigue_deload():
+    """
+    3. High-fatigue seeded user:
+    Seeds offline DB with logs exhibiting zero workout completion and very poor nutrition,
+    driving readiness_factor below 0.65 -> triggers deload protocol.
+    Calls POST /api/v1/planning/workout-plan.
+    Verifies:
+      - API response title contains '(Deload Week)'
+      - deload_active is True
+      - all exercise sets are capped at 2
+      - intensity metadata reflects RPE 6.
+    """
+    from datetime import date
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True):
+
+        profile = _valid_db_profile(goal_type="fat_loss", target_weight_kg=75.0)
+        db_mod._OFFLINE_TEST_DB["profiles"][TEST_USER_ID] = profile
+
+        base = date(2026, 8, 1)
+        for i in range(14):
+            d = (base + timedelta(days=i)).strftime("%Y-%m-%d")
+            db_mod._OFFLINE_TEST_DB["daily_logs"][f"fatigue_log_{i}"] = {
+                "id": f"fatigue_log_{i}",
+                "user_id": TEST_USER_ID,
+                "log_date": d,
+                "weight_kg": 82.5,
+                "calories_consumed": 500,  # severely off target
+                "protein_consumed_g": 20.0,
+                "carbs_consumed_g": 40.0,
+                "fat_consumed_g": 10.0,
+                "water_liters": 1.0,
+                "workout_completed": False,  # 0 completed workouts
+                "energy_rating": 1,          # lowest energy
+                "notes": "Exhausted and fatigued",
+                "created_at": f"{d}T12:00:00+00:00",
+            }
+
+        payload = {
+            "goal_type": "fat_loss",
+            "workout_days_per_week": 4,
+            "experience_level": "intermediate"
+        }
+        res = client.post("/api/v1/planning/workout-plan", json=payload, headers=AUTH_HEADER)
+        assert res.status_code == 200
+        plan = res.json()
+        assert "Deload Week" in plan["title"]
+        assert plan["deload_active"] is True
+        assert "RPE 6" in plan["intensity_target"]
+        assert plan["days_per_week"] == 2  # 4 - 2 recovery days = 2
+        for day in plan["routine"]:
+            for ex in day["exercises"]:
+                assert ex["sets"] == 2
+
+
+def test_workout_plan_api_live_muscle_gain_plateau_preserves_baseline_workout():
+    """
+    5. Muscle-gain plateau:
+    Seeds offline DB with 29 daily logs representing a muscle-gain plateau.
+    Adaptation engine produces diet adjustment (+150 kcal), but workout_adjustment remains neutral maintain/medium.
+    Verifies that workout plan remains strictly baseline:
+      - deload_active is False
+      - cardio_minutes == 0
+      - baseline sets (4, 4, 3, 3, 3) are preserved
+      - diet surplus (+150 kcal) does NOT accidentally bleed into workout generation.
+    """
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True):
+
+        profile = _valid_db_profile(goal_type="muscle_gain", target_weight_kg=85.0)
+        db_mod._OFFLINE_TEST_DB["profiles"][TEST_USER_ID] = profile
+
+        for log in _plateau_logs_28d(calories=3155, protein_g=165, carbs_g=427, fat_g=88):
+            db_mod._OFFLINE_TEST_DB["daily_logs"][log["id"]] = dict(log)
+
+        payload = {
+            "goal_type": "muscle_gain",
+            "workout_days_per_week": 4,
+            "experience_level": "intermediate"
+        }
+        res = client.post("/api/v1/planning/workout-plan", json=payload, headers=AUTH_HEADER)
+        assert res.status_code == 200
+        plan = res.json()
+        assert plan["cardio_minutes"] == 0
+        assert plan["deload_active"] is False
+        assert plan["days_per_week"] == 4
+        assert [ex["sets"] for ex in plan["routine"][0]["exercises"]] == [4, 4, 3, 3, 3]
+        for day in plan["routine"]:
+            assert len(day["exercises"]) == 5

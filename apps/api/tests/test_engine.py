@@ -17,8 +17,8 @@ from app.engine.bmr_tdee import (
     CALORIE_FLOORS,
 )
 from app.engine.nutrition_rules import generate_deterministic_meal_plan, filter_foods_by_preference, SEED_FOODS
-from app.engine.adaptation import DietAdjustment
-from app.engine.workout_rules import select_workout_split, generate_deterministic_workout_plan
+from app.engine.adaptation import DietAdjustment, WorkoutAdjustment
+from app.engine.workout_rules import select_workout_split, generate_deterministic_workout_plan, apply_workout_adjustment
 from app.engine.transformation import predict_transformation_timeline, simulate_multi_week_transformation
 
 
@@ -164,6 +164,103 @@ def test_deterministic_workout_plan():
     plan = generate_deterministic_workout_plan("muscle_gain", 4, "intermediate")
     assert plan["split_type"] == "UPPER_LOWER"
     assert len(plan["routine"]) == 2
+
+
+def test_workout_plan_adjustment_none_preserves_baseline():
+    plan = generate_deterministic_workout_plan("muscle_gain", 4, "intermediate", workout_adjustment=None)
+    assert plan["split_type"] == "UPPER_LOWER"
+    assert plan["days_per_week"] == 4
+    assert len(plan["routine"]) == 2
+    # Baseline upper lower Day 1 has Bench (4 sets), Row (4 sets), OHP (3 sets)
+    day1_sets = [ex["sets"] for ex in plan["routine"][0]["exercises"]]
+    assert day1_sets == [4, 4, 3, 3, 3]
+    assert plan["deload_active"] is False
+    assert plan["cardio_minutes"] == 0
+    assert plan["recovery_days"] == 0
+    assert plan["intensity_target"] == "RPE 7-8 (Standard)"
+
+
+def test_workout_plan_neutral_adjustment_identical_to_baseline():
+    plan_none = generate_deterministic_workout_plan("muscle_gain", 4, "intermediate", workout_adjustment=None)
+    plan_neutral = generate_deterministic_workout_plan(
+        "muscle_gain", 4, "intermediate", workout_adjustment=WorkoutAdjustment()
+    )
+    assert plan_none == plan_neutral
+
+
+def test_workout_plan_volume_low_reduces_sets():
+    adj = WorkoutAdjustment(volume="low")
+    plan = generate_deterministic_workout_plan("muscle_gain", 4, "intermediate", workout_adjustment=adj)
+    # Baseline sets [4, 4, 3, 3, 3] -> [3, 3, 2, 2, 2]
+    day1_sets = [ex["sets"] for ex in plan["routine"][0]["exercises"]]
+    assert day1_sets == [3, 3, 2, 2, 2]
+
+
+def test_workout_plan_volume_high_increases_sets():
+    adj = WorkoutAdjustment(volume="high")
+    plan = generate_deterministic_workout_plan("muscle_gain", 4, "intermediate", workout_adjustment=adj)
+    # Baseline sets [4, 4, 3, 3, 3] -> [5, 5, 4, 4, 4]
+    day1_sets = [ex["sets"] for ex in plan["routine"][0]["exercises"]]
+    assert day1_sets == [5, 5, 4, 4, 4]
+
+
+def test_workout_plan_volume_floor_never_below_two():
+    # If baseline is full_body (3 sets each), low volume makes them 2, but never 1 or 0
+    adj = WorkoutAdjustment(volume="low")
+    plan = generate_deterministic_workout_plan("fat_loss", 3, "beginner", workout_adjustment=adj)
+    for day in plan["routine"]:
+        for ex in day["exercises"]:
+            assert ex["sets"] >= 2
+
+
+def test_workout_plan_deload_caps_sets_at_two():
+    adj = WorkoutAdjustment(
+        intensity="reduce",
+        volume="low",
+        recovery_days=2,
+        cardio_minutes=0,
+        deload_recommended=True,
+    )
+    plan = generate_deterministic_workout_plan("muscle_gain", 4, "intermediate", workout_adjustment=adj)
+    assert "Deload" in plan["title"]
+    assert plan["deload_active"] is True
+    assert "RPE 6" in plan["intensity_target"]
+    for day in plan["routine"]:
+        for ex in day["exercises"]:
+            assert ex["sets"] == 2
+
+
+def test_workout_plan_recovery_days_effective_frequency():
+    # recovery_days = 1: 4 days -> 3 days
+    adj1 = WorkoutAdjustment(recovery_days=1)
+    plan1 = generate_deterministic_workout_plan("muscle_gain", 4, "intermediate", workout_adjustment=adj1)
+    assert plan1["days_per_week"] == 3
+    assert plan1["recovery_days"] == 1
+    assert "Recovery Allocation: 1" in plan1["description"]
+    assert len(plan1["routine"]) == 2  # routine card count preserved!
+
+    # recovery_days = 2: 4 days -> 2 days
+    adj2 = WorkoutAdjustment(recovery_days=2)
+    plan2 = generate_deterministic_workout_plan("muscle_gain", 4, "intermediate", workout_adjustment=adj2)
+    assert plan2["days_per_week"] == 2
+    assert plan2["recovery_days"] == 2
+    assert "Recovery Allocation: 2" in plan2["description"]
+    assert len(plan2["routine"]) == 2  # routine card count preserved!
+
+
+def test_workout_plan_cardio_minutes_appends_finisher():
+    adj = WorkoutAdjustment(cardio_minutes=30)
+    plan = generate_deterministic_workout_plan("fat_loss", 4, "intermediate", workout_adjustment=adj)
+    assert plan["cardio_minutes"] == 30
+    for day in plan["routine"]:
+        # 5 baseline exercises + 1 cardio finisher = 6
+        assert len(day["exercises"]) == 6
+        finisher = day["exercises"][-1]
+        assert finisher["name"] == "Post-Workout Cardio (Zone 2 LISS)"
+        assert finisher["sets"] == 1
+        assert finisher["reps"] == "30 min"
+        assert finisher["rest_sec"] == 0
+        assert day["exercises"][0]["name"] in ("Barbell Bench Press", "Barbell Squat")
 
 
 def test_transformation_timeline_uncertainty_corridor():

@@ -94,6 +94,7 @@ export interface WorkoutPlanRequest {
   goal_type: string;
   workout_days_per_week: number;
   experience_level: string;
+  apply_adaptation?: boolean;
 }
 
 export interface ExerciseItem {
@@ -116,6 +117,10 @@ export interface WorkoutPlanResponse {
   experience_level: string;
   description: string;
   routine: WorkoutDayRoutine[];
+  intensity_target?: string;
+  deload_active?: boolean;
+  cardio_minutes?: number;
+  recovery_days?: number;
 }
 
 export interface DailyLog {
