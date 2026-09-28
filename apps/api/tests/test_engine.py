@@ -17,6 +17,7 @@ from app.engine.bmr_tdee import (
     CALORIE_FLOORS,
 )
 from app.engine.nutrition_rules import generate_deterministic_meal_plan, filter_foods_by_preference, SEED_FOODS
+from app.engine.adaptation import DietAdjustment
 from app.engine.workout_rules import select_workout_split, generate_deterministic_workout_plan
 from app.engine.transformation import predict_transformation_timeline, simulate_multi_week_transformation
 
@@ -68,6 +69,89 @@ def test_deterministic_meal_plan():
     assert plan["target_calories"] == 2000
     assert len(plan["meals"]) == 4
     assert plan["achieved_calories"] > 1000
+
+
+def test_meal_plan_no_adjustment_unchanged():
+    """Requirement A: No adjustment preserves existing meal-plan behavior."""
+    plan_none = generate_deterministic_meal_plan(
+        target_calories=2000,
+        target_protein_g=150.0,
+        target_carbs_g=200.0,
+        target_fat_g=60.0,
+        dietary_preference="anything",
+        diet_adjustment=None,
+    )
+    plan_neutral = generate_deterministic_meal_plan(
+        target_calories=2000,
+        target_protein_g=150.0,
+        target_carbs_g=200.0,
+        target_fat_g=60.0,
+        dietary_preference="anything",
+        diet_adjustment=DietAdjustment(),
+    )
+    assert plan_none["target_calories"] == 2000
+    assert plan_none["target_protein_g"] == 150.0
+    assert plan_none["target_carbs_g"] == 200.0
+    assert plan_none["target_fat_g"] == 60.0
+    assert plan_none == plan_neutral
+
+
+def test_meal_plan_muscle_gain_plateau_adaptation():
+    """Requirement B: Muscle-gain plateau adjustment adapts target calories and macros."""
+    baseline = generate_deterministic_meal_plan(
+        target_calories=2000,
+        target_protein_g=150.0,
+        target_carbs_g=200.0,
+        target_fat_g=60.0,
+        dietary_preference="anything",
+        diet_adjustment=None,
+    )
+    plateau_adj = DietAdjustment(
+        calorie_delta=150,
+        carb_delta_g=25.0,
+        fat_delta_g=5.5,
+        protein_delta_g=0.0,
+    )
+    adapted = generate_deterministic_meal_plan(
+        target_calories=2000,
+        target_protein_g=150.0,
+        target_carbs_g=200.0,
+        target_fat_g=60.0,
+        dietary_preference="anything",
+        diet_adjustment=plateau_adj,
+    )
+    assert adapted["target_calories"] == 2150
+    assert adapted["target_carbs_g"] == 225.0
+    assert adapted["target_fat_g"] == 65.5
+    assert adapted["target_protein_g"] == 150.0
+    assert adapted["achieved_calories"] > baseline["achieved_calories"]
+    assert adapted["achieved_carbs_g"] > baseline["achieved_carbs_g"]
+
+
+def test_meal_plan_deficit_safety_floor_enforced():
+    """Requirement C: Negative calorie adjustment cannot push effective target below the safety floor (1200 kcal)."""
+    cut_adj = DietAdjustment(calorie_delta=-200)
+    # 1300 - 200 = 1100 -> clamped to 1200
+    plan_clamped = generate_deterministic_meal_plan(
+        target_calories=1300,
+        target_protein_g=120.0,
+        target_carbs_g=100.0,
+        target_fat_g=40.0,
+        dietary_preference="anything",
+        diet_adjustment=cut_adj,
+    )
+    assert plan_clamped["target_calories"] == 1200
+
+    # 1200 - 300 = 900 -> clamped to 1200
+    plan_hard_floor = generate_deterministic_meal_plan(
+        target_calories=1200,
+        target_protein_g=100.0,
+        target_carbs_g=100.0,
+        target_fat_g=40.0,
+        dietary_preference="anything",
+        diet_adjustment=DietAdjustment(calorie_delta=-300),
+    )
+    assert plan_hard_floor["target_calories"] == 1200
 
 
 def test_workout_split_selection():

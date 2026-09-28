@@ -512,3 +512,60 @@ def test_adaptation_api_live_fat_loss_plateau_produces_cardio_without_diet_cut()
         assert data["diet_adjustment"]["protein_delta_g"] == 0.0
         assert data["diet_adjustment"]["carb_delta_g"] == 0.0
         assert data["diet_adjustment"]["fat_delta_g"] == 0.0
+
+
+def test_meal_plan_api_live_muscle_gain_plateau_adaptation():
+    """
+    Live API integration test: Seeds offline DB with a muscle_gain user
+    and 29 daily logs representing a verified muscle-gain plateau.
+    Calls POST /api/v1/planning/meal-plan through TestClient with AUTH_HEADER.
+    Verifies that the returned meal plan automatically incorporates the adapted targets:
+      target_calories == 3155 + 150 == 3305
+      target_carbs_g == 427.0 + 25.0 == 452.0
+      target_fat_g == 88.0 + 5.5 == 93.5
+      target_protein_g == 165.0
+    Also verifies that passing apply_adaptation=False returns unadjusted baseline targets (3155 kcal).
+    """
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True):
+
+        profile = _valid_db_profile(goal_type="muscle_gain", target_weight_kg=85.0)
+        db_mod._OFFLINE_TEST_DB["profiles"][TEST_USER_ID] = profile
+
+        # For male 82.5kg, 178cm, 25yo, moderately_active, muscle_gain:
+        # baseline target_calories is 3155, protein 165g, carbs 427g, fat 88g
+        for log in _plateau_logs_28d(calories=3155, protein_g=165, carbs_g=427, fat_g=88):
+            db_mod._OFFLINE_TEST_DB["daily_logs"][log["id"]] = dict(log)
+
+        payload = {
+            "target_calories": 3155,
+            "target_protein_g": 165.0,
+            "target_carbs_g": 427.0,
+            "target_fat_g": 88.0,
+            "dietary_preference": "vegetarian"
+        }
+
+        # 1. Call real planning API with default adaptation
+        res = client.post("/api/v1/planning/meal-plan", json=payload, headers=AUTH_HEADER)
+        assert res.status_code == 200
+        plan = res.json()
+
+        # Target metrics in returned plan must reflect the adapted targets
+        assert plan["target_calories"] == 3305
+        assert plan["target_carbs_g"] == 452.0
+        assert plan["target_fat_g"] == 93.5
+        assert plan["target_protein_g"] == 165.0
+        assert len(plan["meals"]) == 4
+
+        # 2. Call with apply_adaptation = False -> returns unadjusted plan
+        unadapted_payload = dict(payload)
+        unadapted_payload["apply_adaptation"] = False
+        res_unadapted = client.post("/api/v1/planning/meal-plan", json=unadapted_payload, headers=AUTH_HEADER)
+        assert res_unadapted.status_code == 200
+        plan_unadapted = res_unadapted.json()
+        assert plan_unadapted["target_calories"] == 3155
+        assert plan_unadapted["target_carbs_g"] == 427.0
+        assert plan_unadapted["target_fat_g"] == 88.0
+        assert plan["achieved_calories"] > plan_unadapted["achieved_calories"]

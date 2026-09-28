@@ -7,6 +7,8 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends
 from app.core.security import get_current_user, UserContext
+from app.db.supabase import ProfileRepository
+from app.engine.adaptation import compute_adaptation_for_user, DietAdjustment
 from app.engine.nutrition_rules import generate_deterministic_meal_plan
 from app.engine.workout_rules import generate_deterministic_workout_plan
 
@@ -19,6 +21,7 @@ class MealPlanRequestSchema(BaseModel):
     target_carbs_g: float = Field(..., ge=20.0, le=600.0)
     target_fat_g: float = Field(..., ge=15.0, le=200.0)
     dietary_preference: str = Field("anything", pattern="^(anything|vegetarian|vegan|keto|paleo)$")
+    apply_adaptation: bool = Field(True, description="Whether to apply active adaptation adjustments if available")
 
 
 class WorkoutPlanRequestSchema(BaseModel):
@@ -31,13 +34,27 @@ class WorkoutPlanRequestSchema(BaseModel):
 def create_meal_plan(
     payload: MealPlanRequestSchema, user_ctx: UserContext = Depends(get_current_user)
 ):
-    """Generates a deterministic 4-meal daily plan matching macro targets."""
+    """Generates a deterministic 4-meal daily plan matching macro targets, applying user adaptation if active."""
+    diet_adjustment: Optional[DietAdjustment] = None
+    if payload.apply_adaptation and user_ctx and user_ctx.user_id:
+        try:
+            profile = ProfileRepository.get_profile(user_ctx.user_id, user_ctx.access_token)
+            if profile:
+                decision = compute_adaptation_for_user(
+                    user_id=user_ctx.user_id,
+                    user_token=user_ctx.access_token,
+                )
+                diet_adjustment = decision.diet_adjustment
+        except (ValueError, KeyError):
+            diet_adjustment = None
+
     return generate_deterministic_meal_plan(
         target_calories=payload.target_calories,
         target_protein_g=payload.target_protein_g,
         target_carbs_g=payload.target_carbs_g,
         target_fat_g=payload.target_fat_g,
         dietary_preference=payload.dietary_preference,
+        diet_adjustment=diet_adjustment,
     )
 
 

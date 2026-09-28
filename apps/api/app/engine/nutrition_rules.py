@@ -4,7 +4,10 @@ Matches target calories and macros to pre-validated meal components
 based on user dietary preferences (anything, vegetarian, vegan, keto, paleo).
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
+from app.engine.bmr_tdee import CALORIE_FLOORS
+
+SAFETY_FLOOR_CALORIES: int = CALORIE_FLOORS.get("female", 1200)
 
 # Seed Food Database for Rule Engine
 SEED_FOODS: List[Dict[str, Any]] = [
@@ -55,11 +58,40 @@ def generate_deterministic_meal_plan(
     target_carbs_g: float,
     target_fat_g: float,
     dietary_preference: str = "anything",
+    diet_adjustment: Optional[Union[Any, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Generates a 4-meal daily plan (Breakfast, Lunch, Dinner, Snack)
     scaling food portions to hit macro and calorie targets deterministically.
+    If diet_adjustment is provided, effective targets are derived by applying
+    caloric and macronutrient deltas while respecting clinical safety floors.
     """
+    cal_delta = 0
+    p_delta = 0.0
+    c_delta = 0.0
+    f_delta = 0.0
+
+    if diet_adjustment is not None:
+        if hasattr(diet_adjustment, "calorie_delta"):
+            cal_delta = int(getattr(diet_adjustment, "calorie_delta", 0) or 0)
+            p_delta = float(getattr(diet_adjustment, "protein_delta_g", 0.0) or 0.0)
+            c_delta = float(getattr(diet_adjustment, "carb_delta_g", 0.0) or 0.0)
+            f_delta = float(getattr(diet_adjustment, "fat_delta_g", 0.0) or 0.0)
+        elif isinstance(diet_adjustment, dict):
+            cal_delta = int(diet_adjustment.get("calorie_delta", 0) or 0)
+            p_delta = float(diet_adjustment.get("protein_delta_g", 0.0) or 0.0)
+            c_delta = float(diet_adjustment.get("carb_delta_g", 0.0) or 0.0)
+            f_delta = float(diet_adjustment.get("fat_delta_g", 0.0) or 0.0)
+
+    if cal_delta < 0:
+        effective_calories = max(SAFETY_FLOOR_CALORIES, int(round(target_calories + cal_delta)))
+    else:
+        effective_calories = int(round(target_calories + cal_delta))
+
+    effective_protein_g = max(0.0, round(target_protein_g + p_delta, 1))
+    effective_carbs_g = max(0.0, round(target_carbs_g + c_delta, 1))
+    effective_fat_g = max(0.0, round(target_fat_g + f_delta, 1))
+
     available_foods = filter_foods_by_preference(SEED_FOODS, dietary_preference)
 
     # Distribute Calories across 4 meals: Breakfast 25%, Lunch 35%, Dinner 30%, Snack 10%
@@ -77,9 +109,9 @@ def generate_deterministic_meal_plan(
     total_plan_f = 0.0
 
     for name, ratio in meal_splits:
-        meal_cal_target = target_calories * ratio
-        meal_p_target = target_protein_g * ratio
-        meal_c_target = target_carbs_g * ratio
+        meal_cal_target = effective_calories * ratio
+        meal_p_target = effective_protein_g * ratio
+        meal_c_target = effective_carbs_g * ratio
 
         # Pick protein and carb sources from available pool
         protein_choices = [f for f in available_foods if f["category"] in ("protein", "dairy")]
@@ -127,7 +159,10 @@ def generate_deterministic_meal_plan(
 
     return {
         "title": f"Deterministic {dietary_preference.capitalize()} Meal Plan",
-        "target_calories": target_calories,
+        "target_calories": effective_calories,
+        "target_protein_g": effective_protein_g,
+        "target_carbs_g": effective_carbs_g,
+        "target_fat_g": effective_fat_g,
         "achieved_calories": int(round(total_plan_cal)),
         "achieved_protein_g": round(total_plan_p, 1),
         "achieved_carbs_g": round(total_plan_c, 1),
