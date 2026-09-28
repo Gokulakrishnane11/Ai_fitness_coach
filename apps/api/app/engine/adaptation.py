@@ -699,6 +699,119 @@ def calculate_workout_adjustment(
     )
 
 
+def clamp_negative_calorie_adjustment(
+    calorie_delta: int,
+    target_calories: Optional[float],
+) -> int:
+    """
+    Enforces the project's internal baseline configuration bound of 1200 kcal
+    for any negative calorie adjustment.
+
+    If target_calories <= 1200:
+        calorie_delta = 0
+    else:
+        max_cut = max(0, int(target_calories - 1200))
+        calorie_delta = -min(abs(calorie_delta), max_cut)
+    """
+    if calorie_delta >= 0:
+        return calorie_delta
+    if target_calories is None or target_calories <= 1200.0:
+        return 0
+    max_cut = max(0, int(target_calories - 1200.0))
+    return -min(abs(calorie_delta), max_cut)
+
+
+def calculate_diet_adjustment(
+    readiness_factor: float,
+    plateau_detected: bool,
+    high_fatigue_flag: bool,
+    goal_type: str,
+    adherence_percent: Optional[float] = None,
+    nutrition_score: Optional[float] = None,
+    target_calories: Optional[float] = None,
+) -> DietAdjustment:
+    """
+    Computes deterministic DietAdjustment based on empirical signals and goals.
+
+    Priority order:
+    1. Behavioral adherence gate:
+       adherence_percent is None OR adherence_percent < 70.0 -> neutral
+    2. Nutritional alignment gate:
+       nutrition_score is not None AND nutrition_score < 60.0 -> neutral
+    3. Fatigue/readiness gate:
+       high_fatigue_flag is True OR readiness_factor < 0.80 -> neutral
+    4. Verified plateau:
+       If plateau_detected is True:
+       - muscle_gain: +150 kcal, 0.0g protein, +25.0g carbs, +5.5g fat
+       - weight_gain: +150 kcal, 0.0g protein, +25.0g carbs, +5.5g fat
+       - fat_loss: neutral (Task 12-1 handles via cardio_minutes=30)
+       - recomposition: neutral
+    5. No plateau: -> neutral
+    6. Fallback: -> neutral
+    """
+    # 1. Behavioral adherence gate
+    if adherence_percent is None or adherence_percent < 70.0:
+        return DietAdjustment(
+            calorie_delta=0,
+            protein_delta_g=0.0,
+            carb_delta_g=0.0,
+            fat_delta_g=0.0,
+        )
+
+    # 2. Nutritional alignment gate
+    if nutrition_score is not None and nutrition_score < 60.0:
+        return DietAdjustment(
+            calorie_delta=0,
+            protein_delta_g=0.0,
+            carb_delta_g=0.0,
+            fat_delta_g=0.0,
+        )
+
+    # 3. Fatigue/readiness gate
+    if high_fatigue_flag or readiness_factor < 0.80:
+        return DietAdjustment(
+            calorie_delta=0,
+            protein_delta_g=0.0,
+            carb_delta_g=0.0,
+            fat_delta_g=0.0,
+        )
+
+    # 4. Verified plateau
+    if plateau_detected:
+        goal = (goal_type or "").lower().strip()
+        if goal in ("muscle_gain", "weight_gain"):
+            return DietAdjustment(
+                calorie_delta=150,
+                protein_delta_g=0.0,
+                carb_delta_g=25.0,
+                fat_delta_g=5.5,
+            )
+        elif goal == "fat_loss":
+            # Task 12-1 already handles fat-loss plateau through cardio_minutes = 30.
+            # Do NOT simultaneously reduce calories.
+            return DietAdjustment(
+                calorie_delta=0,
+                protein_delta_g=0.0,
+                carb_delta_g=0.0,
+                fat_delta_g=0.0,
+            )
+        elif goal == "recomposition":
+            return DietAdjustment(
+                calorie_delta=0,
+                protein_delta_g=0.0,
+                carb_delta_g=0.0,
+                fat_delta_g=0.0,
+            )
+
+    # 5. No plateau / Fallback
+    return DietAdjustment(
+        calorie_delta=0,
+        protein_delta_g=0.0,
+        carb_delta_g=0.0,
+        fat_delta_g=0.0,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Centralized Adaptation Decision Engine
 # ---------------------------------------------------------------------------
@@ -864,7 +977,7 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
     else:
         coaching_summary = "Consistent progress and healthy readiness metrics observed across recent logs."
 
-    # 7. Dynamic Workout Adjustments & Baseline Adjustments
+    # 7. Dynamic Workout & Diet Adjustments
     if not objective_data_available:
         workout_adjustment = WorkoutAdjustment(
             intensity="maintain",
@@ -873,6 +986,12 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
             cardio_minutes=0,
             deload_recommended=False,
         )
+        diet_adjustment = DietAdjustment(
+            calorie_delta=0,
+            protein_delta_g=0.0,
+            carb_delta_g=0.0,
+            fat_delta_g=0.0,
+        )
     else:
         workout_adjustment = calculate_workout_adjustment(
             readiness_factor=readiness_factor,
@@ -880,6 +999,15 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
             high_fatigue_flag=high_fatigue_flag,
             goal_type=input_data.goal_type,
             recovery_score=input_data.recovery_score,
+        )
+        diet_adjustment = calculate_diet_adjustment(
+            readiness_factor=readiness_factor,
+            plateau_detected=plateau_detected,
+            high_fatigue_flag=high_fatigue_flag,
+            goal_type=input_data.goal_type,
+            adherence_percent=input_data.adherence_percent,
+            nutrition_score=input_data.nutrition_score,
+            target_calories=input_data.target_calories,
         )
 
     return AdaptationDecision(
@@ -892,12 +1020,7 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
         readiness_factor=readiness_factor,
         plateau_detected=plateau_detected,
         high_fatigue_flag=high_fatigue_flag,
-        diet_adjustment=DietAdjustment(
-            calorie_delta=0,
-            protein_delta_g=0.0,
-            carb_delta_g=0.0,
-            fat_delta_g=0.0,
-        ),
+        diet_adjustment=diet_adjustment,
         workout_adjustment=workout_adjustment,
         actionable_recommendations=recommendations,
         coaching_summary=coaching_summary,

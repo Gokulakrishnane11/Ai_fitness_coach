@@ -26,7 +26,10 @@ from app.engine.adaptation import (
     AdaptationInput,
     AdaptationDecision,
     WorkoutAdjustment,
+    DietAdjustment,
     calculate_workout_adjustment,
+    calculate_diet_adjustment,
+    clamp_negative_calorie_adjustment,
     compute_adaptation,
 )
 
@@ -903,3 +906,328 @@ def test_compute_adaptation_journal_changes_do_not_affect_workout_adjustment():
         )
         decision = compute_adaptation(inp)
         assert decision.workout_adjustment == decision_base.workout_adjustment
+
+
+# ---------------------------------------------------------------------------
+# Task 12-2: Dynamic Diet Adjustment Tests
+# ---------------------------------------------------------------------------
+
+def test_diet_adj_unmeasured_or_fallback_neutral():
+    """1. zero-data / unmeasured signals return neutral DietAdjustment."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=1.0,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=None,
+    )
+    assert adj.calorie_delta == 0
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 0.0
+    assert adj.fat_delta_g == 0.0
+
+
+def test_diet_adj_adherence_under_70_neutral():
+    """2. adherence < 70 blocks adjustment (returns neutral)."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=69.9,
+        nutrition_score=85.0,
+    )
+    assert adj.calorie_delta == 0
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 0.0
+    assert adj.fat_delta_g == 0.0
+
+
+def test_diet_adj_adherence_none_neutral():
+    """3. adherence None blocks adjustment (returns neutral)."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=None,
+        nutrition_score=85.0,
+    )
+    assert adj.calorie_delta == 0
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 0.0
+    assert adj.fat_delta_g == 0.0
+
+
+def test_diet_adj_nutrition_score_under_60_neutral():
+    """4. nutrition_score < 60 blocks adjustment (returns neutral)."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=85.0,
+        nutrition_score=59.9,
+    )
+    assert adj.calorie_delta == 0
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 0.0
+    assert adj.fat_delta_g == 0.0
+
+
+def test_diet_adj_high_fatigue_neutral():
+    """5. high fatigue blocks adjustment (returns neutral)."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=True,
+        goal_type="muscle_gain",
+        adherence_percent=85.0,
+        nutrition_score=80.0,
+    )
+    assert adj.calorie_delta == 0
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 0.0
+    assert adj.fat_delta_g == 0.0
+
+
+def test_diet_adj_rf_under_080_neutral():
+    """6. readiness_factor < 0.80 blocks adjustment (returns neutral)."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.79,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=85.0,
+        nutrition_score=80.0,
+    )
+    assert adj.calorie_delta == 0
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 0.0
+    assert adj.fat_delta_g == 0.0
+
+
+def test_diet_adj_muscle_gain_plateau_adds_150_surplus():
+    """7. muscle_gain plateau with verified compliance adds +150 kcal surplus."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=85.0,
+        nutrition_score=80.0,
+    )
+    assert adj.calorie_delta == 150
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 25.0
+    assert adj.fat_delta_g == 5.5
+
+
+def test_diet_adj_weight_gain_plateau_adds_150_surplus():
+    """8. weight_gain plateau with verified compliance adds +150 kcal surplus."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="weight_gain",
+        adherence_percent=85.0,
+        nutrition_score=80.0,
+    )
+    assert adj.calorie_delta == 150
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 25.0
+    assert adj.fat_delta_g == 5.5
+
+
+def test_diet_adj_recomposition_plateau_neutral():
+    """9. recomposition plateau remains neutral."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="recomposition",
+        adherence_percent=85.0,
+        nutrition_score=80.0,
+    )
+    assert adj.calorie_delta == 0
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 0.0
+    assert adj.fat_delta_g == 0.0
+
+
+def test_diet_adj_fat_loss_plateau_neutral_single_intervention():
+    """10. fat_loss plateau remains neutral (Task 12-1 handles via cardio_minutes=30)."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+        adherence_percent=85.0,
+        nutrition_score=80.0,
+    )
+    assert adj.calorie_delta == 0
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 0.0
+    assert adj.fat_delta_g == 0.0
+
+
+def test_diet_adj_target_calories_le_1200_cannot_receive_negative_adjustment():
+    """11. target_calories <= 1200 cannot receive negative adjustment."""
+    # Target already at or below internal baseline bound (1200 kcal)
+    assert clamp_negative_calorie_adjustment(-150, target_calories=1200.0) == 0
+    assert clamp_negative_calorie_adjustment(-150, target_calories=1100.0) == 0
+    assert clamp_negative_calorie_adjustment(-150, target_calories=None) == 0
+    # Target above 1200 can receive clamped negative adjustment
+    assert clamp_negative_calorie_adjustment(-150, target_calories=1300.0) == -100
+    assert clamp_negative_calorie_adjustment(-150, target_calories=1500.0) == -150
+    # Positive adjustments are unaffected
+    assert clamp_negative_calorie_adjustment(150, target_calories=1100.0) == 150
+
+
+def test_diet_adj_no_plateau_high_readiness_neutral():
+    """12. no plateau + high readiness remains neutral."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=1.05,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=95.0,
+        nutrition_score=95.0,
+    )
+    assert adj.calorie_delta == 0
+    assert adj.protein_delta_g == 0.0
+    assert adj.carb_delta_g == 0.0
+    assert adj.fat_delta_g == 0.0
+
+
+def test_compute_adaptation_diet_insufficient_logs_neutral():
+    """13. integration: insufficient logs (< 3) returns neutral diet adjustment."""
+    inp = make_base_input(
+        log_count=2,
+        goal_type="muscle_gain",
+        adherence_percent=90.0,
+        plateau_probability=85.0,
+    )
+    decision = compute_adaptation(inp)
+    assert decision.diet_adjustment.calorie_delta == 0
+    assert decision.diet_adjustment.protein_delta_g == 0.0
+    assert decision.diet_adjustment.carb_delta_g == 0.0
+    assert decision.diet_adjustment.fat_delta_g == 0.0
+
+
+def test_compute_adaptation_diet_no_objective_data_neutral():
+    """14. integration: no objective data returns neutral diet adjustment."""
+    inp = make_base_input(
+        log_count=5,
+        goal_type="muscle_gain",
+        adherence_percent=None,
+        recovery_score=None,
+        stress_score=None,
+        sleep_quality=None,
+        plateau_probability=None,
+        injury_risk=None,
+    )
+    decision = compute_adaptation(inp)
+    assert decision.objective_data_available is False
+    assert decision.diet_adjustment.calorie_delta == 0
+    assert decision.diet_adjustment.protein_delta_g == 0.0
+    assert decision.diet_adjustment.carb_delta_g == 0.0
+    assert decision.diet_adjustment.fat_delta_g == 0.0
+
+
+def test_compute_adaptation_muscle_gain_plateau_diet_plus_150_workout_baseline():
+    """15. integration: muscle-gain plateau produces diet +150 while workout remains baseline."""
+    inp = make_base_input(
+        log_count=10,
+        goal_type="muscle_gain",
+        adherence_percent=85.0,
+        recovery_score=80.0,
+        plateau_probability=85.0,
+    )
+    decision = compute_adaptation(inp)
+    # Diet adjustment receives +150 kcal surplus
+    assert decision.diet_adjustment.calorie_delta == 150
+    assert decision.diet_adjustment.protein_delta_g == 0.0
+    assert decision.diet_adjustment.carb_delta_g == 25.0
+    assert decision.diet_adjustment.fat_delta_g == 5.5
+    # Workout adjustment holds neutral baseline
+    assert decision.workout_adjustment.intensity == "maintain"
+    assert decision.workout_adjustment.volume == "medium"
+    assert decision.workout_adjustment.cardio_minutes == 0
+    assert decision.workout_adjustment.deload_recommended is False
+
+
+def test_compute_adaptation_journal_changes_do_not_affect_diet_adjustment():
+    """16. journal changes do not affect diet adjustment."""
+    base_inp = make_base_input(
+        log_count=10,
+        goal_type="muscle_gain",
+        adherence_percent=85.0,
+        recovery_score=80.0,
+        plateau_probability=85.0,
+    )
+    decision_base = compute_adaptation(base_inp)
+    assert decision_base.diet_adjustment.calorie_delta == 150
+
+    for sentiment in ["fatigued", "motivated", "consistent", None]:
+        inp = make_base_input(
+            log_count=10,
+            goal_type="muscle_gain",
+            adherence_percent=85.0,
+            recovery_score=80.0,
+            plateau_probability=85.0,
+            latest_journal_sentiment=sentiment,
+        )
+        decision = compute_adaptation(inp)
+        assert decision.diet_adjustment == decision_base.diet_adjustment
+
+
+def test_diet_adj_priority_adherence_gate_before_plateau():
+    """Priority test: adherence gate triggers before plateau adjustment."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.90,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=50.0,
+        nutrition_score=90.0,
+    )
+    assert adj.calorie_delta == 0
+
+
+def test_diet_adj_priority_nutrition_gate_before_plateau():
+    """Priority test: nutrition alignment gate triggers before plateau adjustment."""
+    adj = calculate_diet_adjustment(
+        readiness_factor=0.90,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=85.0,
+        nutrition_score=50.0,
+    )
+    assert adj.calorie_delta == 0
+
+
+def test_diet_adj_priority_fatigue_readiness_gate_before_plateau():
+    """Priority test: fatigue/readiness gate triggers before plateau adjustment."""
+    # High fatigue flag
+    adj_fatigue = calculate_diet_adjustment(
+        readiness_factor=0.90,
+        plateau_detected=True,
+        high_fatigue_flag=True,
+        goal_type="muscle_gain",
+        adherence_percent=85.0,
+        nutrition_score=85.0,
+    )
+    assert adj_fatigue.calorie_delta == 0
+
+    # Low readiness factor
+    adj_rf = calculate_diet_adjustment(
+        readiness_factor=0.72,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+        adherence_percent=85.0,
+        nutrition_score=85.0,
+    )
+    assert adj_rf.calorie_delta == 0
