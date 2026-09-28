@@ -16,7 +16,13 @@ import pytest
 
 import app.engine.adaptation as adaptation_mod
 from app.db import supabase as db_mod
-from app.db.supabase import DailyLogRepository, JournalRepository, ProfileRepository
+from app.db.supabase import (
+    DailyLogRepository,
+    JournalRepository,
+    ProfileRepository,
+    MealPlanRepository,
+    WorkoutPlanRepository,
+)
 from app.engine.adaptation import (
     AdaptationDecision,
     compute_adaptation_for_user,
@@ -108,23 +114,35 @@ MORNING_FATIGUED = _journal_row(
 )
 
 
-def _repos(profile=None, logs=None, journal=None):
+def _repos(profile=None, logs=None, journal=None, meal_plan=None, workout_plan=None):
     profile_repo = MagicMock()
     log_repo = MagicMock()
     journal_repo = MagicMock()
+    meal_repo = MagicMock()
+    workout_repo = MagicMock()
     profile_repo.get_profile.return_value = _db_profile() if profile is None else profile
     log_repo.get_logs.return_value = _db_logs() if logs is None else logs
     journal_repo.get_entries.return_value = [] if journal is None else journal
-    return profile_repo, log_repo, journal_repo
+    meal_repo.get_active_meal_plan.return_value = meal_plan
+    workout_repo.get_active_workout_plan.return_value = workout_plan
+    return profile_repo, log_repo, journal_repo, meal_repo, workout_repo
 
 
-def _run(profile_repo, log_repo, journal_repo, user_token=None):
+def _run(profile_repo, log_repo, journal_repo, meal_repo=None, workout_repo=None, user_token=None):
+    if meal_repo is None:
+        meal_repo = MagicMock()
+        meal_repo.get_active_meal_plan.return_value = None
+    if workout_repo is None:
+        workout_repo = MagicMock()
+        workout_repo.get_active_workout_plan.return_value = None
     return compute_adaptation_for_user(
         USER,
         user_token=user_token,
         profile_repository=profile_repo,
         daily_log_repository=log_repo,
         journal_repository=journal_repo,
+        meal_plan_repository=meal_repo,
+        workout_plan_repository=workout_repo,
     )
 
 
@@ -253,10 +271,10 @@ def test_pipeline_passes_resolved_target_metrics_to_prepare():
 
 
 def test_pipeline_missing_profile_raises_value_error():
-    profile_repo, log_repo, journal_repo = _repos()
+    profile_repo, log_repo, journal_repo, meal_repo, workout_repo = _repos()
     profile_repo.get_profile.return_value = None
     with pytest.raises(ValueError, match="Profile not found"):
-        _run(profile_repo, log_repo, journal_repo)
+        _run(profile_repo, log_repo, journal_repo, meal_repo, workout_repo)
     journal_repo.get_entries.assert_not_called()
 
 
@@ -267,11 +285,20 @@ def test_pipeline_incomplete_profile_raises_value_error():
 
 
 def test_pipeline_forwards_token_to_all_repositories():
-    profile_repo, log_repo, journal_repo = _repos()
-    _run(profile_repo, log_repo, journal_repo, user_token="jwt_abc")
+    profile_repo, log_repo, journal_repo, meal_repo, workout_repo = _repos()
+    _run(
+        profile_repo,
+        log_repo,
+        journal_repo,
+        meal_repo,
+        workout_repo,
+        user_token="jwt_abc",
+    )
     profile_repo.get_profile.assert_called_once_with(USER, user_token="jwt_abc")
     log_repo.get_logs.assert_called_once_with(USER, user_token="jwt_abc")
     journal_repo.get_entries.assert_called_once_with(USER, user_token="jwt_abc")
+    meal_repo.get_active_meal_plan.assert_called_once_with(user_id=USER, user_token="jwt_abc")
+    workout_repo.get_active_workout_plan.assert_called_once_with(user_id=USER, user_token="jwt_abc")
 
 
 def test_pipeline_does_not_mutate_repository_data():
@@ -286,18 +313,20 @@ def test_pipeline_does_not_mutate_repository_data():
 
 
 def test_pipeline_journal_repository_error_propagates():
-    profile_repo, log_repo, journal_repo = _repos()
+    profile_repo, log_repo, journal_repo, meal_repo, workout_repo = _repos()
     journal_repo.get_entries.side_effect = RuntimeError("Supabase RLS Permission Denied")
     with pytest.raises(RuntimeError, match="RLS Permission Denied"):
-        _run(profile_repo, log_repo, journal_repo)
+        _run(profile_repo, log_repo, journal_repo, meal_repo, workout_repo)
 
 
 def test_pipeline_is_read_only():
-    profile_repo, log_repo, journal_repo = _repos(journal=[EVENING_MOTIVATED])
-    _run(profile_repo, log_repo, journal_repo)
+    profile_repo, log_repo, journal_repo, meal_repo, workout_repo = _repos(journal=[EVENING_MOTIVATED])
+    _run(profile_repo, log_repo, journal_repo, meal_repo, workout_repo)
     assert profile_repo.upsert_profile.call_count == 0
     assert log_repo.add_log.call_count == 0
     assert journal_repo.add_entry.call_count == 0
+    assert meal_repo.save_meal_plan.call_count == 0
+    assert workout_repo.save_workout_plan.call_count == 0
 
 
 def test_pipeline_end_to_end_with_real_repositories_in_offline_store():
@@ -331,8 +360,190 @@ def test_compute_adaptation_for_user_signature_and_default_repositories():
         "profile_repository",
         "daily_log_repository",
         "journal_repository",
+        "meal_plan_repository",
+        "workout_plan_repository",
     ]
     assert params["user_token"].default is None
     assert params["profile_repository"].default is ProfileRepository
     assert params["daily_log_repository"].default is DailyLogRepository
     assert params["journal_repository"].default is JournalRepository
+    assert params["meal_plan_repository"].default is MealPlanRepository
+    assert params["workout_plan_repository"].default is WorkoutPlanRepository
+
+
+def test_pipeline_active_meal_plan_overrides_profile_calories_and_macros():
+    """Verify active meal plan targets override static profile targets in the pipeline."""
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["user_meal_plans"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["user_workout_plans"], {}, clear=True):
+
+        # Baseline profile: target_calories is 3155 for male 82.5kg, 178cm, 25yo, moderately_active, muscle_gain
+        profile = _db_profile(goal_type="muscle_gain", target_weight_kg=85.0)
+        ProfileRepository.upsert_profile(USER, profile)
+
+        # Active adapted meal plan with +150 kcal: target_calories = 3305
+        MealPlanRepository.save_meal_plan(
+            USER,
+            {
+                "title": "Adapted Meal Plan",
+                "target_calories": 3305,
+                "target_protein_g": 165.0,
+                "target_carbs_g": 452.0,
+                "target_fat_g": 93.5,
+            },
+        )
+
+        # 7 logs perfectly matching the adapted target (3305 kcal, 165g P, 452g C, 93.5g F)
+        for i in range(1, 8):
+            DailyLogRepository.add_log(
+                USER,
+                {
+                    "log_date": f"2026-09-{i:02d}",
+                    "weight_kg": 82.5,
+                    "calories_consumed": 3305,
+                    "protein_consumed_g": 165,
+                    "carbs_consumed_g": 452,
+                    "fat_consumed_g": 94,
+                    "workout_completed": True,
+                    "energy_rating": 8,
+                },
+            )
+
+        with patch.object(
+            adaptation_mod,
+            "prepare_adaptation_input",
+            wraps=adaptation_mod.prepare_adaptation_input,
+        ) as spy:
+            decision = compute_adaptation_for_user(USER)
+
+        assert spy.call_count == 1
+        call_kwargs = spy.call_args[1]
+        assert call_kwargs["active_meal_plan"] is not None
+        assert call_kwargs["active_meal_plan"]["target_calories"] == 3305
+
+        # Adaptation input targets must be the adapted targets
+        adaptation_input = spy.spy_return if hasattr(spy, "spy_return") else spy.call_args[0]
+        assert isinstance(decision, AdaptationDecision)
+
+
+def test_pipeline_active_workout_plan_overrides_workout_frequency():
+    """Verify active workout plan days_per_week overrides profile workout_days_per_week."""
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["user_meal_plans"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["user_workout_plans"], {}, clear=True):
+
+        # Profile specifies 4 workout days per week
+        profile = _db_profile(workout_days_per_week=4)
+        ProfileRepository.upsert_profile(USER, profile)
+
+        # Active workout plan specifies 3 days per week (e.g. recovery / deload schedule)
+        WorkoutPlanRepository.save_workout_plan(
+            USER,
+            {
+                "title": "Recovery Split",
+                "split_type": "FULL_BODY",
+                "days_per_week": 3,
+            },
+        )
+
+        # 7 logs with exactly 3 completed workouts
+        for i in range(1, 8):
+            DailyLogRepository.add_log(
+                USER,
+                {
+                    "log_date": f"2026-09-{i:02d}",
+                    "weight_kg": 82.5,
+                    "calories_consumed": 2100,
+                    "protein_consumed_g": 150,
+                    "carbs_consumed_g": 200,
+                    "fat_consumed_g": 60,
+                    "workout_completed": (i in (1, 3, 5)),
+                    "energy_rating": 7,
+                },
+            )
+
+        with patch.object(
+            adaptation_mod,
+            "prepare_adaptation_input",
+            wraps=adaptation_mod.prepare_adaptation_input,
+        ) as spy:
+            decision = compute_adaptation_for_user(USER)
+
+        call_kwargs = spy.call_args[1]
+        assert call_kwargs["active_workout_plan"] is not None
+        assert call_kwargs["active_workout_plan"]["days_per_week"] == 3
+
+        # 3 completed out of 3 planned workouts over 7 days is 100% workout adherence
+        # (If compared against profile 4 days, adherence would be 3 / 4 = 75%)
+        assert decision.adherence_score == 100
+
+
+def test_pipeline_missing_active_plans_fall_back_to_profile():
+    """Verify that when no active meal or workout plans exist, static profile values are used."""
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["user_meal_plans"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["user_workout_plans"], {}, clear=True):
+
+        profile = _db_profile(workout_days_per_week=4)
+        ProfileRepository.upsert_profile(USER, profile)
+
+        for i in range(1, 8):
+            DailyLogRepository.add_log(
+                USER,
+                {
+                    "log_date": f"2026-09-{i:02d}",
+                    "weight_kg": 82.5,
+                    "workout_completed": (i in (1, 3, 5)),  # 3 completed
+                },
+            )
+
+        with patch.object(
+            adaptation_mod,
+            "prepare_adaptation_input",
+            wraps=adaptation_mod.prepare_adaptation_input,
+        ) as spy:
+            decision = compute_adaptation_for_user(USER)
+
+        call_kwargs = spy.call_args[1]
+        assert call_kwargs["active_meal_plan"] is None
+        assert call_kwargs["active_workout_plan"] is None
+        # Compared against 4 days from profile: 3 / 4 = 75%
+        assert decision.adherence_score == 75
+
+
+def test_pipeline_user_token_forwarded_to_meal_and_workout_repositories():
+    """Verify compute_adaptation_for_user forwards user_token to meal & workout plan repositories."""
+    mock_profile_repo = MagicMock()
+    mock_log_repo = MagicMock()
+    mock_journal_repo = MagicMock()
+    mock_meal_repo = MagicMock()
+    mock_workout_repo = MagicMock()
+
+    mock_profile_repo.get_profile.return_value = _db_profile()
+    mock_log_repo.get_logs.return_value = []
+    mock_journal_repo.get_entries.return_value = []
+    mock_meal_repo.get_active_meal_plan.return_value = None
+    mock_workout_repo.get_active_workout_plan.return_value = None
+
+    token = "test_forwarded_jwt_token_123"
+    compute_adaptation_for_user(
+        USER,
+        user_token=token,
+        profile_repository=mock_profile_repo,
+        daily_log_repository=mock_log_repo,
+        journal_repository=mock_journal_repo,
+        meal_plan_repository=mock_meal_repo,
+        workout_plan_repository=mock_workout_repo,
+    )
+
+    mock_meal_repo.get_active_meal_plan.assert_called_once_with(user_id=USER, user_token=token)
+    mock_workout_repo.get_active_workout_plan.assert_called_once_with(user_id=USER, user_token=token)

@@ -158,11 +158,17 @@ def test_production_shaped_pipeline_reports_no_objective_data():
         }
     ]
 
+    meal_repo, workout_repo = MagicMock(), MagicMock()
+    meal_repo.get_active_meal_plan.return_value = None
+    workout_repo.get_active_workout_plan.return_value = None
+
     decision = compute_adaptation_for_user(
         "u1",
         profile_repository=profile_repo,
         daily_log_repository=log_repo,
         journal_repository=journal_repo,
+        meal_plan_repository=meal_repo,
+        workout_plan_repository=workout_repo,
     )
 
     assert decision.objective_data_available is False

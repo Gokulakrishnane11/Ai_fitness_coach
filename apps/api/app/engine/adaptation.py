@@ -7,7 +7,13 @@ and stateless empirical scoring functions for behavioral adaptation decisions.
 from typing import List, Literal, Optional, Union, Any, Dict
 from datetime import date, datetime, timedelta, timezone
 from pydantic import BaseModel, Field
-from app.db.supabase import ProfileRepository, DailyLogRepository, JournalRepository
+from app.db.supabase import (
+    ProfileRepository,
+    DailyLogRepository,
+    JournalRepository,
+    MealPlanRepository,
+    WorkoutPlanRepository,
+)
 from app.engine.bmr_tdee import calculate_target_metrics
 
 
@@ -1337,12 +1343,14 @@ def prepare_adaptation_input(
     daily_logs: List[Dict[str, Any]],
     journal_entries: Optional[List[Dict[str, Any]]] = None,
     *,
+    active_meal_plan: Optional[Dict[str, Any]] = None,
+    active_workout_plan: Optional[Dict[str, Any]] = None,
     journal_max_age_days: Optional[int] = DEFAULT_JOURNAL_FRESHNESS_DAYS,
     reference_time: Optional[datetime] = None,
 ) -> AdaptationInput:
     """
-    Pure function that bridges raw profile, daily-log, and journal data into a validated
-    AdaptationInput instance.
+    Pure function that bridges raw profile, daily-log, journal, and active plan data
+    into a validated AdaptationInput instance.
 
     Steps:
         1. Delegates to build_adaptation_context() for aggregation with freshness windowing.
@@ -1355,9 +1363,12 @@ def prepare_adaptation_input(
         7. Passes latest_journal_summary into AdaptationInput.
         8. Passes latest_journal_sentiment through normalize_journal_sentiment() before
            creating AdaptationInput.
-        9. Computes empirical nutrition_score and training_quality from progress and targets.
-        10. Computes empirical adherence_percent when sufficient logging history exists (>= 7 logs and >= 7 days).
-        11. Does NOT compute readiness, adjustments, recommendations, or call
+        9. Resolves effective nutrition and workout targets: prefers active persisted plans
+           when valid; falls back to static profile targets when active plans are missing,
+           zero, negative, or malformed.
+        10. Computes empirical nutrition_score and training_quality from progress and effective targets.
+        11. Computes empirical adherence_percent when sufficient logging history exists (>= 7 logs and >= 7 days).
+        12. Does NOT compute readiness, adjustments, recommendations, or call
             compute_adaptation().
 
     If a required profile field is missing, Pydantic validation will raise
@@ -1381,6 +1392,48 @@ def prepare_adaptation_input(
     # Extract target metrics from profile (nested dict computed at onboarding)
     target_metrics = profile.get("target_metrics") or {}
 
+    # Resolve active nutrition targets with fallback to profile target_metrics
+    effective_target_calories: Optional[int] = None
+    effective_protein_g: Optional[float] = None
+    effective_carbs_g: Optional[float] = None
+    effective_fat_g: Optional[float] = None
+
+    if isinstance(active_meal_plan, dict):
+        act_cals = _safe_float(active_meal_plan.get("target_calories"))
+        if act_cals is not None and act_cals > 0:
+            effective_target_calories = int(round(act_cals))
+
+        act_p = _safe_float(active_meal_plan.get("target_protein_g"))
+        if act_p is not None and act_p > 0:
+            effective_protein_g = float(act_p)
+
+        act_c = _safe_float(active_meal_plan.get("target_carbs_g"))
+        if act_c is not None and act_c > 0:
+            effective_carbs_g = float(act_c)
+
+        act_f = _safe_float(active_meal_plan.get("target_fat_g"))
+        if act_f is not None and act_f > 0:
+            effective_fat_g = float(act_f)
+
+    if effective_target_calories is None:
+        effective_target_calories = target_metrics.get("target_calories")
+    if effective_protein_g is None:
+        effective_protein_g = target_metrics.get("protein_g")
+    if effective_carbs_g is None:
+        effective_carbs_g = target_metrics.get("carbs_g")
+    if effective_fat_g is None:
+        effective_fat_g = target_metrics.get("fat_g")
+
+    # Resolve active workout frequency with fallback to profile workout_days_per_week
+    effective_workout_days: Optional[int] = None
+    if isinstance(active_workout_plan, dict):
+        act_days = _safe_float(active_workout_plan.get("days_per_week"))
+        if act_days is not None and act_days > 0:
+            effective_workout_days = int(round(act_days))
+
+    if effective_workout_days is None:
+        effective_workout_days = profile.get("workout_days_per_week")
+
     # Extract journal context
     raw_sentiment = journal.get("latest_journal_sentiment")
     normalized_sentiment = normalize_journal_sentiment(raw_sentiment)
@@ -1393,20 +1446,20 @@ def prepare_adaptation_input(
     if progress.get("log_count", 0) > 0:
         calculated_nutrition_score = score_nutrition(
             actual_calories=progress.get("average_calories_consumed"),
-            target_calories=target_metrics.get("target_calories"),
+            target_calories=effective_target_calories,
             actual_protein_g=progress.get("average_protein_consumed_g"),
-            target_protein_g=target_metrics.get("protein_g"),
+            target_protein_g=effective_protein_g,
             actual_carbs_g=progress.get("average_carbs_consumed_g"),
-            target_carbs_g=target_metrics.get("carbs_g"),
+            target_carbs_g=effective_carbs_g,
             actual_fat_g=progress.get("average_fat_consumed_g"),
-            target_fat_g=target_metrics.get("fat_g"),
+            target_fat_g=effective_fat_g,
         )
 
         has_workout_data = any(
             isinstance(log, dict) and "workout_completed" in log and log.get("workout_completed") is not None
             for log in daily_logs
         )
-        planned_workouts = profile.get("workout_days_per_week")
+        planned_workouts = effective_workout_days
         completed_workouts = progress.get("completed_workouts") if has_workout_data else None
         energy_rating = progress.get("average_energy_rating")
 
@@ -1427,7 +1480,7 @@ def prepare_adaptation_input(
 
             planned_workouts_adh: Optional[float] = None
             completed_workouts_adh: Optional[int] = None
-            pw = _safe_float(profile.get("workout_days_per_week"))
+            pw = _safe_float(effective_workout_days)
             if has_workout_data and pw is not None and pw > 0:
                 completed_workouts_adh = progress.get("completed_workouts", 0)
                 planned_workouts_adh = pw * (float(observed_days) / 7.0)
@@ -1435,7 +1488,7 @@ def prepare_adaptation_input(
             days_with_calorie_data_adh: Optional[int] = None
             days_with_target_calories_adh: Optional[Union[int, float]] = None
             target_cals = _safe_float(
-                target_metrics.get("target_calories") or profile.get("target_calories")
+                effective_target_calories or profile.get("target_calories")
             )
             if has_calorie_data and target_cals is not None and target_cals > 0:
                 days_with_calorie_data_adh = progress.get("days_with_calorie_data", 0)
@@ -1458,11 +1511,11 @@ def prepare_adaptation_input(
         current_weight_kg=current_weight,  # type: ignore[arg-type]
         target_weight_kg=profile.get("target_weight_kg"),  # type: ignore[arg-type]
         goal_type=profile.get("goal_type"),  # type: ignore[arg-type]
-        target_calories=target_metrics.get("target_calories"),  # type: ignore[arg-type]
-        target_protein_g=target_metrics.get("protein_g"),  # type: ignore[arg-type]
-        target_carbs_g=target_metrics.get("carbs_g"),  # type: ignore[arg-type]
-        target_fat_g=target_metrics.get("fat_g"),  # type: ignore[arg-type]
-        workout_days_per_week=profile.get("workout_days_per_week"),  # type: ignore[arg-type]
+        target_calories=effective_target_calories,  # type: ignore[arg-type]
+        target_protein_g=effective_protein_g,  # type: ignore[arg-type]
+        target_carbs_g=effective_carbs_g,  # type: ignore[arg-type]
+        target_fat_g=effective_fat_g,  # type: ignore[arg-type]
+        workout_days_per_week=effective_workout_days,  # type: ignore[arg-type]
         experience_level=profile.get("experience_level"),  # type: ignore[arg-type]
         log_count=progress["log_count"],
         adherence_percent=calculated_adherence_percent,
@@ -1777,10 +1830,12 @@ def compute_adaptation_for_user(
     profile_repository: Any = ProfileRepository,
     daily_log_repository: Any = DailyLogRepository,
     journal_repository: Any = JournalRepository,
+    meal_plan_repository: Any = MealPlanRepository,
+    workout_plan_repository: Any = WorkoutPlanRepository,
 ) -> AdaptationDecision:
     """
     Read-only pipeline: collect_adaptation_data -> ensure_target_metrics ->
-    prepare_adaptation_input -> compute_adaptation.
+    resolve active plans -> prepare_adaptation_input -> compute_adaptation.
 
     Persists nothing. Raises ValueError for a missing profile or a profile too incomplete
     to derive targets. Repository errors propagate to the caller.
@@ -1793,7 +1848,24 @@ def compute_adaptation_for_user(
         journal_repository=journal_repository,
     )
     profile = ensure_target_metrics(data["profile"])
+
+    active_meal_plan = None
+    if meal_plan_repository and hasattr(meal_plan_repository, "get_active_meal_plan"):
+        active_meal_plan = meal_plan_repository.get_active_meal_plan(
+            user_id=user_id, user_token=user_token
+        )
+
+    active_workout_plan = None
+    if workout_plan_repository and hasattr(workout_plan_repository, "get_active_workout_plan"):
+        active_workout_plan = workout_plan_repository.get_active_workout_plan(
+            user_id=user_id, user_token=user_token
+        )
+
     adaptation_input = prepare_adaptation_input(
-        profile, data["daily_logs"], data["journal_entries"]
+        profile,
+        data["daily_logs"],
+        data["journal_entries"],
+        active_meal_plan=active_meal_plan,
+        active_workout_plan=active_workout_plan,
     )
     return compute_adaptation(adaptation_input)

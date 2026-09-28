@@ -860,3 +860,231 @@ def test_prepare_adaptation_input_propagation_into_decision_and_readiness():
     assert dec_poor.adherence_score < dec_full.adherence_score
     # Adherence score accounts for 30% of positive readiness: lower adherence directly lowers readiness_factor
     assert dec_poor.readiness_factor < dec_full.readiness_factor
+
+
+# ---------------------------------------------------------------------------
+# Phase 3B: Active Plan -> Adherence Integration Tests
+# ---------------------------------------------------------------------------
+
+def test_prepare_adaptation_input_active_meal_plan_overrides_calories():
+    """Verify active meal plan target_calories overrides static profile target_calories."""
+    profile = _make_profile()
+    active_meal_plan = {"target_calories": 2500}
+    result = prepare_adaptation_input(profile, [], active_meal_plan=active_meal_plan)
+    assert result.target_calories == 2500
+
+
+def test_prepare_adaptation_input_active_meal_plan_overrides_all_macros():
+    """Verify active meal plan targets override protein, carbs, and fat."""
+    profile = _make_profile()
+    active_meal_plan = {
+        "target_calories": 2400,
+        "target_protein_g": 180.0,
+        "target_carbs_g": 260.0,
+        "target_fat_g": 70.0,
+    }
+    result = prepare_adaptation_input(profile, [], active_meal_plan=active_meal_plan)
+    assert result.target_calories == 2400
+    assert result.target_protein_g == 180.0
+    assert result.target_carbs_g == 260.0
+    assert result.target_fat_g == 70.0
+
+
+def test_prepare_adaptation_input_active_workout_plan_overrides_frequency():
+    """Verify active workout plan days_per_week overrides profile workout_days_per_week."""
+    profile = _make_profile(workout_days_per_week=4)
+    active_workout_plan = {"days_per_week": 3}
+    result = prepare_adaptation_input(profile, [], active_workout_plan=active_workout_plan)
+    assert result.workout_days_per_week == 3
+
+
+def test_prepare_adaptation_input_missing_active_plans_fall_back_to_profile():
+    """Verify omitting active plans or passing None falls back to profile values."""
+    profile = _make_profile(workout_days_per_week=4)
+    res_none = prepare_adaptation_input(profile, [], active_meal_plan=None, active_workout_plan=None)
+    assert res_none.target_calories == 2100
+    assert res_none.target_protein_g == 165.0
+    assert res_none.target_carbs_g == 200.0
+    assert res_none.target_fat_g == 60.0
+    assert res_none.workout_days_per_week == 4
+
+
+def test_prepare_adaptation_input_invalid_active_meal_plan_falls_back_safely():
+    """Verify None, 0, negative values, and non-dict active meal plans fall back safely."""
+    profile = _make_profile()
+    # Case 1: non-dict
+    res_str = prepare_adaptation_input(profile, [], active_meal_plan="invalid")  # type: ignore
+    assert res_str.target_calories == 2100
+
+    # Case 2: zero values
+    res_zero = prepare_adaptation_input(
+        profile,
+        [],
+        active_meal_plan={"target_calories": 0, "target_protein_g": 0, "target_carbs_g": 0, "target_fat_g": 0},
+    )
+    assert res_zero.target_calories == 2100
+    assert res_zero.target_protein_g == 165.0
+    assert res_zero.target_carbs_g == 200.0
+    assert res_zero.target_fat_g == 60.0
+
+    # Case 3: negative values
+    res_neg = prepare_adaptation_input(
+        profile,
+        [],
+        active_meal_plan={"target_calories": -2000, "target_protein_g": -50.0},
+    )
+    assert res_neg.target_calories == 2100
+    assert res_neg.target_protein_g == 165.0
+
+    # Case 4: None values in dict
+    res_nones = prepare_adaptation_input(
+        profile,
+        [],
+        active_meal_plan={"target_calories": None, "target_protein_g": None},
+    )
+    assert res_nones.target_calories == 2100
+    assert res_nones.target_protein_g == 165.0
+
+
+def test_prepare_adaptation_input_invalid_active_workout_plan_falls_back_safely():
+    """Verify None, 0, negative values, and non-dict active workout plans fall back safely."""
+    profile = _make_profile(workout_days_per_week=4)
+
+    # Non-dict
+    res_str = prepare_adaptation_input(profile, [], active_workout_plan="malformed")  # type: ignore
+    assert res_str.workout_days_per_week == 4
+
+    # Zero
+    res_zero = prepare_adaptation_input(profile, [], active_workout_plan={"days_per_week": 0})
+    assert res_zero.workout_days_per_week == 4
+
+    # Negative
+    res_neg = prepare_adaptation_input(profile, [], active_workout_plan={"days_per_week": -3})
+    assert res_neg.workout_days_per_week == 4
+
+    # None
+    res_none = prepare_adaptation_input(profile, [], active_workout_plan={"days_per_week": None})
+    assert res_none.workout_days_per_week == 4
+
+
+def test_prepare_adaptation_input_adapted_nutrition_alignment_example():
+    """
+    Example from requirements:
+    Original target = 3155 kcal, Adapted active plan = 3305 kcal, User logs = 3305 kcal.
+    The nutrition score should evaluate against 3305 (producing 100.0), not 3155.
+    """
+    profile = _make_profile(
+        target_metrics={
+            "target_calories": 3155,
+            "protein_g": 165.0,
+            "carbs_g": 415.0,
+            "fat_g": 93.0,
+        }
+    )
+    active_meal_plan = {
+        "target_calories": 3305,
+        "target_protein_g": 165.0,
+        "target_carbs_g": 452.0,
+        "target_fat_g": 94.0,
+    }
+
+    logs = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "calories_consumed": 3305,
+            "protein_consumed_g": 165.0,
+            "carbs_consumed_g": 452.0,
+            "fat_consumed_g": 94.0,
+        }
+        for i in range(1, 8)
+    ]
+
+    # With active meal plan: evaluates against 3305 -> 100.0% nutrition score
+    result_adapted = prepare_adaptation_input(profile, logs, active_meal_plan=active_meal_plan)
+    assert result_adapted.nutrition_score == 100.0
+
+    # Without active meal plan: evaluates against 3155 -> sub-100% nutrition score
+    result_baseline = prepare_adaptation_input(profile, logs)
+    assert result_baseline.nutrition_score < 100.0
+
+
+def test_prepare_adaptation_input_adapted_workout_recovery_alignment_example():
+    """
+    Example from requirements:
+    Original workout target = 4 days, Active recovery plan = 3 days, User completes 3 workouts.
+    Workout adherence should evaluate against 3 (producing 100%), not 4 (87.5%).
+    """
+    profile = _make_profile(workout_days_per_week=4)
+    active_workout_plan = {"days_per_week": 3}
+
+    logs = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": (i in (1, 3, 5)),  # exactly 3 workouts in 7 days
+            "calories_consumed": 2100,
+        }
+        for i in range(1, 8)
+    ]
+
+    # With active 3-day recovery plan: 3 completed / 3 expected = 100.0%
+    result_adapted = prepare_adaptation_input(profile, logs, active_workout_plan=active_workout_plan)
+    assert result_adapted.adherence_percent == 100.0
+
+    # Without active plan (profile 4 days): 3 completed / 4 expected = 75.0% workout adh,
+    # combined with 7/7 calories (100%) -> (75.0 + 100.0) / 2 = 87.5%
+    result_baseline = prepare_adaptation_input(profile, logs)
+    assert result_baseline.adherence_percent == 87.5
+
+
+def test_prepare_adaptation_input_apply_adaptation_false_baseline_behavior():
+    """
+    When a baseline plan is generated with apply_adaptation=False, its target_calories
+    and days_per_week match the profile. Passing this plan behaves naturally like the profile.
+    """
+    profile = _make_profile(workout_days_per_week=4)
+    baseline_plan = {
+        "target_calories": 2100,
+        "target_protein_g": 165.0,
+        "target_carbs_g": 200.0,
+        "target_fat_g": 60.0,
+    }
+    baseline_workout = {"days_per_week": 4}
+
+    logs = [
+        {
+            "log_date": f"2026-09-{i:02d}",
+            "workout_completed": (i in (1, 3, 5)),
+            "calories_consumed": 2100,
+        }
+        for i in range(1, 8)
+    ]
+
+    res_adapted_baseline = prepare_adaptation_input(
+        profile, logs, active_meal_plan=baseline_plan, active_workout_plan=baseline_workout
+    )
+    res_no_plan = prepare_adaptation_input(profile, logs)
+
+    assert res_adapted_baseline.target_calories == res_no_plan.target_calories
+    assert res_adapted_baseline.target_protein_g == res_no_plan.target_protein_g
+    assert res_adapted_baseline.workout_days_per_week == res_no_plan.workout_days_per_week
+    assert res_adapted_baseline.nutrition_score == res_no_plan.nutrition_score
+    assert res_adapted_baseline.adherence_percent == res_no_plan.adherence_percent
+
+
+def test_prepare_adaptation_input_does_not_mutate_active_plans():
+    """Verify prepare_adaptation_input does not mutate active plan input dicts."""
+    profile = _make_profile()
+    meal_plan = {"target_calories": 2500, "target_protein_g": 180.0}
+    workout_plan = {"days_per_week": 3}
+    meal_snapshot = copy.deepcopy(meal_plan)
+    workout_snapshot = copy.deepcopy(workout_plan)
+
+    prepare_adaptation_input(
+        profile,
+        [],
+        active_meal_plan=meal_plan,
+        active_workout_plan=workout_plan,
+    )
+
+    assert meal_plan == meal_snapshot
+    assert workout_plan == workout_snapshot
