@@ -25,6 +25,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from app.engine.adaptation import (
     AdaptationInput,
     AdaptationDecision,
+    WorkoutAdjustment,
+    calculate_workout_adjustment,
     compute_adaptation,
 )
 
@@ -227,11 +229,12 @@ def test_no_workout_changes_made_in_v1():
     inp = make_base_input(log_count=14, recovery_score=30.0, injury_risk=80.0)
     decision = compute_adaptation(inp)
 
-    assert decision.workout_adjustment.intensity == "maintain"
-    assert decision.workout_adjustment.volume == "medium"
-    assert decision.workout_adjustment.recovery_days == 0
+    # In Task 12-1, recovery_score=30.0 (< 50) triggers high_fatigue_flag -> deload
+    assert decision.workout_adjustment.intensity == "reduce"
+    assert decision.workout_adjustment.volume == "low"
+    assert decision.workout_adjustment.recovery_days == 2
     assert decision.workout_adjustment.cardio_minutes == 0
-    assert decision.workout_adjustment.deload_recommended is False
+    assert decision.workout_adjustment.deload_recommended is True
 
 
 # ---------------------------------------------------------------------------
@@ -554,3 +557,349 @@ def test_empirical_recommendations_maintain_ordering_with_physiological_and_jour
         "High motivation noted in recent journal. Channel energy into structured training.",
     ]
     assert decision.actionable_recommendations == expected_order
+
+
+# ---------------------------------------------------------------------------
+# 11. Dynamic Workout Adjustments Tests (Task 12-1)
+# ---------------------------------------------------------------------------
+
+def test_workout_adj_rule1_high_fatigue_flag_triggers_deload():
+    """1. high fatigue -> deload (intensity=reduce, volume=low, recovery_days=2, cardio=0, deload=True)."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.90,
+        plateau_detected=False,
+        high_fatigue_flag=True,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "reduce"
+    assert adj.volume == "low"
+    assert adj.recovery_days == 2
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is True
+
+
+def test_workout_adj_rule1_rf_under_65_triggers_deload():
+    """2. RF < 0.65 -> deload."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.64,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "reduce"
+    assert adj.volume == "low"
+    assert adj.recovery_days == 2
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is True
+
+
+def test_workout_adj_rule2_rf_65_boundary_low_readiness():
+    """3. RF 0.65 -> low readiness (intensity=reduce, volume=low, recovery_days=1, cardio=0, deload=False)."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.65,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "reduce"
+    assert adj.volume == "low"
+    assert adj.recovery_days == 1
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule2_rf_79_boundary_low_readiness():
+    """4. RF 0.79 -> low readiness."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.79,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "reduce"
+    assert adj.volume == "low"
+    assert adj.recovery_days == 1
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule5_rf_80_moderate_boundary():
+    """5. RF 0.80 -> moderate/plateau boundary (neutral if not plateau)."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.80,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "maintain"
+    assert adj.volume == "medium"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule5_rf_99_moderate():
+    """6. RF 0.99 -> moderate."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.99,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "maintain"
+    assert adj.volume == "medium"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule4_rf_ge_100_recovery_none_caps_at_maintain():
+    """7a. RF >= 1.00 + recovery=None -> maintain/medium (safe baseline progression)."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=1.00,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+        recovery_score=None,
+    )
+    assert adj.intensity == "maintain"
+    assert adj.volume == "medium"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule4_rf_112_recovery_none_caps_at_maintain():
+    """7b. RF 1.12 + recovery=None -> maintain/medium."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=1.12,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+        recovery_score=None,
+    )
+    assert adj.intensity == "maintain"
+    assert adj.volume == "medium"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule4_rf_ge_100_with_recovery_triggers_increase():
+    """8a. RF >= 1.00 + recovery=85 -> increase/high (escalation with measured clearance)."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=1.00,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+        recovery_score=85.0,
+    )
+    assert adj.intensity == "increase"
+    assert adj.volume == "high"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule4_rf_112_with_recovery_triggers_increase():
+    """8b. RF 1.12 + recovery=90 -> increase/high."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=1.12,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+        recovery_score=90.0,
+    )
+    assert adj.intensity == "increase"
+    assert adj.volume == "high"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_compute_adaptation_rf_ge_100_without_recovery_caps_at_maintain():
+    """Integration: High adherence and logging without recovery score caps at maintain/medium."""
+    inp = make_base_input(
+        log_count=10,
+        adherence_percent=100.0,
+        recovery_score=None,
+        plateau_probability=0.0,
+    )
+    decision = compute_adaptation(inp)
+    assert decision.readiness_factor >= 1.00
+    assert decision.workout_adjustment.intensity == "maintain"
+    assert decision.workout_adjustment.volume == "medium"
+    assert decision.workout_adjustment.deload_recommended is False
+
+
+def test_compute_adaptation_rf_ge_100_with_recovery_triggers_increase():
+    """Integration: High adherence + recovery score = 100.0 triggers increase/high."""
+    inp = make_base_input(
+        log_count=10,
+        adherence_percent=100.0,
+        recovery_score=100.0,
+        plateau_probability=0.0,
+    )
+    decision = compute_adaptation(inp)
+    assert decision.readiness_factor >= 1.00
+    assert decision.workout_adjustment.intensity == "increase"
+    assert decision.workout_adjustment.volume == "high"
+    assert decision.workout_adjustment.deload_recommended is False
+
+
+def test_workout_adj_rule3_fat_loss_plateau_adds_cardio():
+    """9. fat-loss plateau with good readiness -> +30 cardio."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "maintain"
+    assert adj.volume == "medium"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 30
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule3_muscle_gain_plateau_no_cardio():
+    """10. muscle-gain plateau -> no cardio."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="muscle_gain",
+    )
+    assert adj.intensity == "maintain"
+    assert adj.volume == "medium"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule3_weight_gain_plateau_no_cardio():
+    """11. weight-gain plateau -> no cardio."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="weight_gain",
+    )
+    assert adj.intensity == "maintain"
+    assert adj.volume == "medium"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_rule3_recomposition_plateau_no_cardio():
+    """12. recomposition plateau -> no cardio."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="recomposition",
+    )
+    assert adj.intensity == "maintain"
+    assert adj.volume == "medium"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_high_fatigue_priority_over_plateau():
+    """13. high fatigue + plateau -> fatigue/deload takes priority."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.85,
+        plateau_detected=True,
+        high_fatigue_flag=True,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "reduce"
+    assert adj.volume == "low"
+    assert adj.recovery_days == 2
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is True
+
+
+def test_workout_adj_low_readiness_priority_over_plateau():
+    """14. low readiness + plateau -> low-readiness rule takes priority (no cardio)."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.72,
+        plateau_detected=True,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "reduce"
+    assert adj.volume == "low"
+    assert adj.recovery_days == 1
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_workout_adj_neutral_state():
+    """15. neutral state -> maintain/medium."""
+    adj = calculate_workout_adjustment(
+        readiness_factor=0.90,
+        plateau_detected=False,
+        high_fatigue_flag=False,
+        goal_type="fat_loss",
+    )
+    assert adj.intensity == "maintain"
+    assert adj.volume == "medium"
+    assert adj.recovery_days == 0
+    assert adj.cardio_minutes == 0
+    assert adj.deload_recommended is False
+
+
+def test_compute_adaptation_zero_data_guard_remains_neutral():
+    """16. zero-data guard remains neutral."""
+    inp = make_base_input(log_count=2, recovery_score=20.0, plateau_probability=90.0)
+    decision = compute_adaptation(inp)
+    assert decision.workout_adjustment.intensity == "maintain"
+    assert decision.workout_adjustment.volume == "medium"
+    assert decision.workout_adjustment.recovery_days == 0
+    assert decision.workout_adjustment.cardio_minutes == 0
+    assert decision.workout_adjustment.deload_recommended is False
+
+
+def test_compute_adaptation_baseline_unmeasured_objective_data_remains_neutral():
+    """17. baseline/unmeasured objective data remains neutral."""
+    inp = make_base_input(
+        log_count=5,
+        adherence_percent=None,
+        recovery_score=None,
+        stress_score=None,
+        sleep_quality=None,
+        plateau_probability=None,
+        injury_risk=None,
+    )
+    decision = compute_adaptation(inp)
+    assert decision.objective_data_available is False
+    assert decision.workout_adjustment.intensity == "maintain"
+    assert decision.workout_adjustment.volume == "medium"
+    assert decision.workout_adjustment.recovery_days == 0
+    assert decision.workout_adjustment.cardio_minutes == 0
+    assert decision.workout_adjustment.deload_recommended is False
+
+
+def test_compute_adaptation_journal_changes_do_not_affect_workout_adjustment():
+    """18. journal changes do not affect workout adjustment."""
+    base_inp = make_base_input(
+        log_count=5,
+        adherence_percent=85.0,
+        recovery_score=80.0,
+        plateau_probability=20.0,
+    )
+    decision_base = compute_adaptation(base_inp)
+
+    for sentiment in ["fatigued", "motivated", "consistent", None]:
+        inp = make_base_input(
+            log_count=5,
+            adherence_percent=85.0,
+            recovery_score=80.0,
+            plateau_probability=20.0,
+            latest_journal_sentiment=sentiment,
+        )
+        decision = compute_adaptation(inp)
+        assert decision.workout_adjustment == decision_base.workout_adjustment

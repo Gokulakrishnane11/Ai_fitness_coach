@@ -613,6 +613,92 @@ def build_adaptation_input(
 
 
 
+def calculate_workout_adjustment(
+    readiness_factor: float,
+    plateau_detected: bool,
+    high_fatigue_flag: bool,
+    goal_type: str,
+    recovery_score: Optional[float] = None,
+) -> WorkoutAdjustment:
+    """
+    Computes deterministic WorkoutAdjustment based on physiological and progress signals.
+
+    Rules evaluated in priority order:
+    1. High fatigue:
+       high_fatigue_flag == True OR readiness_factor < 0.65
+       -> intensity="reduce", volume="low", recovery_days=2, cardio_minutes=0, deload_recommended=True
+    2. Low readiness:
+       0.65 <= readiness_factor < 0.80
+       -> intensity="reduce", volume="low", recovery_days=1, cardio_minutes=0, deload_recommended=False
+    3. Plateau:
+       plateau_detected == True AND readiness_factor >= 0.80
+       -> for fat_loss: intensity="maintain", volume="medium", recovery_days=0, cardio_minutes=30, deload_recommended=False
+       -> for muscle_gain / weight_gain / recomposition / others:
+          intensity="maintain", volume="medium", recovery_days=0, cardio_minutes=0, deload_recommended=False
+    4. High readiness:
+       readiness_factor >= 1.00 AND plateau_detected == False:
+       - Requires recovery_score is not None to escalate training:
+         -> intensity="increase", volume="high", recovery_days=0, cardio_minutes=0, deload_recommended=False
+       - If recovery_score is None, caps at safe baseline progression:
+         -> intensity="maintain", volume="medium", recovery_days=0, cardio_minutes=0, deload_recommended=False
+    5. Otherwise:
+       -> intensity="maintain", volume="medium", recovery_days=0, cardio_minutes=0, deload_recommended=False
+    """
+    if high_fatigue_flag or readiness_factor < 0.65:
+        return WorkoutAdjustment(
+            intensity="reduce",
+            volume="low",
+            recovery_days=2,
+            cardio_minutes=0,
+            deload_recommended=True,
+        )
+
+    if 0.65 <= readiness_factor < 0.80:
+        return WorkoutAdjustment(
+            intensity="reduce",
+            volume="low",
+            recovery_days=1,
+            cardio_minutes=0,
+            deload_recommended=False,
+        )
+
+    if plateau_detected and readiness_factor >= 0.80:
+        goal = (goal_type or "").lower().strip()
+        cardio = 30 if goal == "fat_loss" else 0
+        return WorkoutAdjustment(
+            intensity="maintain",
+            volume="medium",
+            recovery_days=0,
+            cardio_minutes=cardio,
+            deload_recommended=False,
+        )
+
+    if readiness_factor >= 1.00 and not plateau_detected:
+        if recovery_score is not None:
+            return WorkoutAdjustment(
+                intensity="increase",
+                volume="high",
+                recovery_days=0,
+                cardio_minutes=0,
+                deload_recommended=False,
+            )
+        return WorkoutAdjustment(
+            intensity="maintain",
+            volume="medium",
+            recovery_days=0,
+            cardio_minutes=0,
+            deload_recommended=False,
+        )
+
+    return WorkoutAdjustment(
+        intensity="maintain",
+        volume="medium",
+        recovery_days=0,
+        cardio_minutes=0,
+        deload_recommended=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Centralized Adaptation Decision Engine
 # ---------------------------------------------------------------------------
@@ -778,7 +864,24 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
     else:
         coaching_summary = "Consistent progress and healthy readiness metrics observed across recent logs."
 
-    # 7. Conservative First-Version Adjustments (Zero modifications)
+    # 7. Dynamic Workout Adjustments & Baseline Adjustments
+    if not objective_data_available:
+        workout_adjustment = WorkoutAdjustment(
+            intensity="maintain",
+            volume="medium",
+            recovery_days=0,
+            cardio_minutes=0,
+            deload_recommended=False,
+        )
+    else:
+        workout_adjustment = calculate_workout_adjustment(
+            readiness_factor=readiness_factor,
+            plateau_detected=plateau_detected,
+            high_fatigue_flag=high_fatigue_flag,
+            goal_type=input_data.goal_type,
+            recovery_score=input_data.recovery_score,
+        )
+
     return AdaptationDecision(
         adherence_score=decision_adherence,
         recovery_score=decision_recovery,
@@ -795,13 +898,7 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
             carb_delta_g=0.0,
             fat_delta_g=0.0,
         ),
-        workout_adjustment=WorkoutAdjustment(
-            intensity="maintain",
-            volume="medium",
-            recovery_days=0,
-            cardio_minutes=0,
-            deload_recommended=False,
-        ),
+        workout_adjustment=workout_adjustment,
         actionable_recommendations=recommendations,
         coaching_summary=coaching_summary,
         objective_data_available=objective_data_available,
