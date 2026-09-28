@@ -6,7 +6,9 @@ Strict Per-Request RLS Authorization:
 - Offline test mode uses local memory store when IS_LIVE_SUPABASE_ENABLED is False.
 """
 
+import uuid
 from typing import Dict, Any, Optional, List
+from datetime import datetime, timezone
 from supabase import create_client, Client
 from app.core.config import settings
 
@@ -168,4 +170,150 @@ class JournalRepository:
         # Stable sort: entries without created_at keep newest-inserted-first order
         entries.sort(key=lambda e: str(e.get("created_at") or ""), reverse=True)
         return entries[:limit]
+
+
+class MealPlanRepository:
+    """Production Repository for user_meal_plans table with Supabase RLS JWT forwarding."""
+
+    @staticmethod
+    def save_meal_plan(
+        user_id: str,
+        plan_data: Dict[str, Any],
+        user_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Saves a meal plan as active for the user, archiving (deactivating) any previous active meal plans.
+        """
+        record = {
+            "user_id": user_id,
+            "title": str(plan_data.get("title") or "Deterministic Meal Plan"),
+            "target_calories": int(round(plan_data.get("target_calories", 0))),
+            "target_protein_g": int(round(plan_data.get("target_protein_g", 0))),
+            "target_carbs_g": int(round(plan_data.get("target_carbs_g", 0))),
+            "target_fat_g": int(round(plan_data.get("target_fat_g", 0))),
+            "plan_data": dict(plan_data),
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            client.table("user_meal_plans").update({"is_active": False}).eq("user_id", user_id).eq("is_active", True).execute()
+            res = client.table("user_meal_plans").insert(record).execute()
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            raise RuntimeError("Supabase user_meal_plans insert returned empty response data")
+
+        for p in _OFFLINE_TEST_DB["user_meal_plans"].values():
+            if p.get("user_id") == user_id and p.get("is_active") is True:
+                p["is_active"] = False
+
+        plan_id = f"meal_plan_{len(_OFFLINE_TEST_DB['user_meal_plans']) + 1}"
+        if plan_id in _OFFLINE_TEST_DB["user_meal_plans"]:
+            plan_id = f"meal_plan_{uuid.uuid4().hex[:8]}"
+        record["id"] = plan_id
+        _OFFLINE_TEST_DB["user_meal_plans"][plan_id] = record
+        return record
+
+    @staticmethod
+    def get_active_meal_plan(
+        user_id: str,
+        user_token: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Read-only. Returns user's currently active meal plan, or None if no active plan exists."""
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = (
+                client.table("user_meal_plans")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("is_active", True)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            return None
+
+        active_plans = [
+            dict(p)
+            for p in _OFFLINE_TEST_DB["user_meal_plans"].values()
+            if p.get("user_id") == user_id and p.get("is_active") is True
+        ]
+        if not active_plans:
+            return None
+        active_plans.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        return active_plans[0]
+
+
+class WorkoutPlanRepository:
+    """Production Repository for user_workout_plans table with Supabase RLS JWT forwarding."""
+
+    @staticmethod
+    def save_workout_plan(
+        user_id: str,
+        plan_data: Dict[str, Any],
+        user_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Saves a workout plan as active for the user, archiving (deactivating) any previous active workout plans.
+        """
+        record = {
+            "user_id": user_id,
+            "title": str(plan_data.get("title") or "Deterministic Workout Plan"),
+            "split_type": str(plan_data.get("split_type") or "FULL_BODY"),
+            "days_per_week": int(plan_data.get("days_per_week", 4)),
+            "routine_data": dict(plan_data),
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            client.table("user_workout_plans").update({"is_active": False}).eq("user_id", user_id).eq("is_active", True).execute()
+            res = client.table("user_workout_plans").insert(record).execute()
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            raise RuntimeError("Supabase user_workout_plans insert returned empty response data")
+
+        for p in _OFFLINE_TEST_DB["user_workout_plans"].values():
+            if p.get("user_id") == user_id and p.get("is_active") is True:
+                p["is_active"] = False
+
+        plan_id = f"workout_plan_{len(_OFFLINE_TEST_DB['user_workout_plans']) + 1}"
+        if plan_id in _OFFLINE_TEST_DB["user_workout_plans"]:
+            plan_id = f"workout_plan_{uuid.uuid4().hex[:8]}"
+        record["id"] = plan_id
+        _OFFLINE_TEST_DB["user_workout_plans"][plan_id] = record
+        return record
+
+    @staticmethod
+    def get_active_workout_plan(
+        user_id: str,
+        user_token: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Read-only. Returns user's currently active workout plan, or None if no active plan exists."""
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = (
+                client.table("user_workout_plans")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("is_active", True)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            return None
+
+        active_plans = [
+            dict(p)
+            for p in _OFFLINE_TEST_DB["user_workout_plans"].values()
+            if p.get("user_id") == user_id and p.get("is_active") is True
+        ]
+        if not active_plans:
+            return None
+        active_plans.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        return active_plans[0]
 
