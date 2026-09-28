@@ -382,3 +382,133 @@ def test_adaptation_unexpected_exception_propagates_as_500():
     ):
         with pytest.raises(RuntimeError, match="connection reset"):
             client.get("/api/v1/adaptation", headers=AUTH_HEADER)
+
+
+# ---------------------------------------------------------------------------
+# 8. Live Dynamic Output Integration Tests (Task 13-1)
+# ---------------------------------------------------------------------------
+
+def _plateau_logs_28d(
+    weight_kg: float = 82.5,
+    count: int = 29,
+    calories: float = 3155.0,
+    protein_g: float = 165.0,
+    carbs_g: float = 427.0,
+    fat_g: float = 88.0,
+):
+    """
+    Creates 29 daily logs spanning 28 full calendar days with invariant weight,
+    consistent workouts, and aligned nutrition to trigger empirical adherence and plateau.
+    """
+    from datetime import date
+    base = date(2026, 8, 1)
+    logs = []
+    for i in range(count):
+        d = (base + timedelta(days=i)).strftime("%Y-%m-%d")
+        logs.append({
+            "id": f"plateau_log_{i}",
+            "user_id": TEST_USER_ID,
+            "log_date": d,
+            "weight_kg": weight_kg,
+            "calories_consumed": calories,
+            "protein_consumed_g": protein_g,
+            "carbs_consumed_g": carbs_g,
+            "fat_consumed_g": fat_g,
+            "water_liters": 3.0,
+            "workout_completed": True,
+            "energy_rating": 8,
+            "notes": "Plateau integration test log",
+            "created_at": f"{d}T12:00:00+00:00",
+        })
+    return logs
+
+
+def test_adaptation_api_live_muscle_gain_plateau_produces_dynamic_diet_surplus():
+    """
+    Live integration test: Seeds offline DB with 29 daily logs representing a
+    weight plateau under muscle_gain with high adherence.
+    Calls GET /api/v1/adaptation through TestClient.
+    Verifies that real HTTP JSON response returns:
+      diet_adjustment.calorie_delta == 150
+      carb_delta_g == 25.0
+      fat_delta_g == 5.5
+      protein_delta_g == 0.0
+    and workout adjustment remains baseline maintain/medium.
+    """
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True):
+
+        profile = _valid_db_profile(goal_type="muscle_gain", target_weight_kg=85.0)
+        db_mod._OFFLINE_TEST_DB["profiles"][TEST_USER_ID] = profile
+
+        # For male 82.5kg, 178cm, 25yo, moderately_active, muscle_gain:
+        # target_calories is 3155, protein 165g, carbs 426.7g, fat 87.6g
+        for log in _plateau_logs_28d(calories=3155, protein_g=165, carbs_g=427, fat_g=88):
+            db_mod._OFFLINE_TEST_DB["daily_logs"][log["id"]] = dict(log)
+
+        res = client.get("/api/v1/adaptation", headers=AUTH_HEADER)
+        assert res.status_code == 200
+        data = res.json()
+
+        # Schema validation
+        decision = AdaptationDecision.model_validate(data)
+        assert decision.plateau_detected is True
+        assert decision.objective_data_available is True
+
+        # Dynamic diet adjustment values in JSON response
+        assert data["diet_adjustment"]["calorie_delta"] == 150
+        assert data["diet_adjustment"]["carb_delta_g"] == 25.0
+        assert data["diet_adjustment"]["fat_delta_g"] == 5.5
+        assert data["diet_adjustment"]["protein_delta_g"] == 0.0
+
+        # Workout adjustment remains neutral baseline for muscle_gain plateau
+        assert data["workout_adjustment"]["intensity"] == "maintain"
+        assert data["workout_adjustment"]["volume"] == "medium"
+        assert data["workout_adjustment"]["cardio_minutes"] == 0
+        assert data["workout_adjustment"]["deload_recommended"] is False
+
+
+def test_adaptation_api_live_fat_loss_plateau_produces_cardio_without_diet_cut():
+    """
+    Live integration test: Seeds offline DB with 29 daily logs representing a
+    weight plateau under fat_loss with high adherence.
+    Calls GET /api/v1/adaptation through TestClient.
+    Verifies that single-intervention rule survives the API boundary:
+      workout_adjustment.cardio_minutes == 30
+      diet_adjustment.calorie_delta == 0
+    """
+    with patch.object(db_mod, "IS_LIVE_SUPABASE_ENABLED", False), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["profiles"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["daily_logs"], {}, clear=True), \
+         patch.dict(db_mod._OFFLINE_TEST_DB["journal_entries"], {}, clear=True):
+
+        profile = _valid_db_profile(goal_type="fat_loss", target_weight_kg=75.0)
+        db_mod._OFFLINE_TEST_DB["profiles"][TEST_USER_ID] = profile
+
+        # For male 82.5kg, 178cm, 25yo, moderately_active, fat_loss:
+        # target_calories is 2254, protein 181.5g, carbs 233.4g, fat 66.0g
+        for log in _plateau_logs_28d(calories=2254, protein_g=181.5, carbs_g=233.4, fat_g=66.0):
+            db_mod._OFFLINE_TEST_DB["daily_logs"][log["id"]] = dict(log)
+
+        res = client.get("/api/v1/adaptation", headers=AUTH_HEADER)
+        assert res.status_code == 200
+        data = res.json()
+
+        # Schema validation
+        decision = AdaptationDecision.model_validate(data)
+        assert decision.plateau_detected is True
+        assert decision.objective_data_available is True
+
+        # Workout adjustment introduces cardio intervention
+        assert data["workout_adjustment"]["cardio_minutes"] == 30
+        assert data["workout_adjustment"]["intensity"] == "maintain"
+        assert data["workout_adjustment"]["volume"] == "medium"
+        assert data["workout_adjustment"]["deload_recommended"] is False
+
+        # Diet adjustment remains neutral (no simultaneous deficit)
+        assert data["diet_adjustment"]["calorie_delta"] == 0
+        assert data["diet_adjustment"]["protein_delta_g"] == 0.0
+        assert data["diet_adjustment"]["carb_delta_g"] == 0.0
+        assert data["diet_adjustment"]["fat_delta_g"] == 0.0
