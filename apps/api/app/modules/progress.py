@@ -24,6 +24,16 @@ class DailyLogCreateSchema(BaseModel):
     workout_completed: bool = False
     energy_rating: Optional[int] = Field(None, ge=1, le=10)
     notes: Optional[str] = Field(None, max_length=500)
+    # Phase 3C wellness telemetry (0–100 integer scale, all optional/nullable)
+    # Semantic directions match the adaptation engine's corresponding AdaptationInput fields:
+    #   recovery_score  : higher = better  (100 = fully recovered)
+    #   sleep_quality   : higher = better  (100 = excellent sleep)
+    #   stress_level    : higher = worse   (100 = extreme stress)   → maps to AdaptationInput.stress_score
+    #   muscle_soreness : higher = worse   (100 = extreme soreness) → maps to AdaptationInput.injury_risk
+    recovery_score: Optional[int] = Field(None, ge=0, le=100, description="Perceived recovery (0=exhausted, 100=fully recovered)")
+    sleep_quality: Optional[int] = Field(None, ge=0, le=100, description="Sleep quality last night (0=very poor, 100=excellent)")
+    stress_level: Optional[int] = Field(None, ge=0, le=100, description="Perceived stress level (0=none, 100=extreme)")
+    muscle_soreness: Optional[int] = Field(None, ge=0, le=100, description="Muscle soreness (0=none, 100=extreme)")
 
 
 @router.get("/logs")

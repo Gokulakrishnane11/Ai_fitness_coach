@@ -43,6 +43,11 @@ def test_aggregate_daily_logs_empty_logs():
         "average_protein_consumed_g": None,
         "average_carbs_consumed_g": None,
         "average_fat_consumed_g": None,
+        # Phase 3C wellness telemetry
+        "average_recovery_score": None,
+        "average_sleep_quality": None,
+        "average_stress_level": None,
+        "average_muscle_soreness": None,
     }
 
 

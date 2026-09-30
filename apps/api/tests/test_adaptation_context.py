@@ -122,8 +122,12 @@ class TestAggregationResultsPreserved:
             "days_with_target_calories", "average_energy_rating",
             "average_calories_consumed", "average_protein_consumed_g",
             "average_carbs_consumed_g", "average_fat_consumed_g",
+            # Phase 3C wellness telemetry
+            "average_recovery_score", "average_sleep_quality",
+            "average_stress_level", "average_muscle_soreness",
         }
         assert set(result["progress"].keys()) == expected_keys
+
 
     def test_journal_keys_exact(self):
         result = build_adaptation_context(

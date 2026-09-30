@@ -1176,6 +1176,11 @@ def aggregate_daily_logs(
             "average_protein_consumed_g": None,
             "average_carbs_consumed_g": None,
             "average_fat_consumed_g": None,
+            # Phase 3C wellness telemetry
+            "average_recovery_score": None,
+            "average_sleep_quality": None,
+            "average_stress_level": None,
+            "average_muscle_soreness": None,
         }
 
     total_logs = len(daily_logs)
@@ -1186,6 +1191,11 @@ def aggregate_daily_logs(
     protein_list: List[float] = []
     carbs_list: List[float] = []
     fat_list: List[float] = []
+    # Phase 3C wellness telemetry lists
+    recovery_scores: List[float] = []
+    sleep_quality_scores: List[float] = []
+    stress_levels: List[float] = []
+    muscle_soreness_scores: List[float] = []
 
     # Valid dated logs sorted chronologically without mutating input
     valid_dated_logs: List[tuple[date, Dict[str, Any]]] = []
@@ -1223,6 +1233,27 @@ def aggregate_daily_logs(
         fat_val = _safe_float(log.get("fat_consumed_g"))
         if fat_val is not None and fat_val >= 0:
             fat_list.append(fat_val)
+
+        # Phase 3C wellness telemetry extraction
+        # recovery_score: higher = better (0=exhausted, 100=fully recovered)
+        rec_val = _safe_float(log.get("recovery_score"))
+        if rec_val is not None and 0.0 <= rec_val <= 100.0:
+            recovery_scores.append(rec_val)
+
+        # sleep_quality: higher = better (0=very poor, 100=excellent)
+        slp_val = _safe_float(log.get("sleep_quality"))
+        if slp_val is not None and 0.0 <= slp_val <= 100.0:
+            sleep_quality_scores.append(slp_val)
+
+        # stress_level: higher = worse (0=none, 100=extreme) → maps to AdaptationInput.stress_score
+        str_val = _safe_float(log.get("stress_level"))
+        if str_val is not None and 0.0 <= str_val <= 100.0:
+            stress_levels.append(str_val)
+
+        # muscle_soreness: higher = worse (0=none, 100=extreme) → maps to AdaptationInput.injury_risk
+        sor_val = _safe_float(log.get("muscle_soreness"))
+        if sor_val is not None and 0.0 <= sor_val <= 100.0:
+            muscle_soreness_scores.append(sor_val)
 
         # Date parsing for time-based trends
         parsed_date = _parse_log_date(log.get("log_date"))
@@ -1298,6 +1329,28 @@ def aggregate_daily_logs(
                 dated_weight_entries[date_28d], latest_weight_kg
             )
 
+    # Phase 3C wellness telemetry averages (None when no valid observations)
+    average_recovery_score = (
+        round(sum(recovery_scores) / len(recovery_scores), 2)
+        if recovery_scores
+        else None
+    )
+    average_sleep_quality = (
+        round(sum(sleep_quality_scores) / len(sleep_quality_scores), 2)
+        if sleep_quality_scores
+        else None
+    )
+    average_stress_level = (
+        round(sum(stress_levels) / len(stress_levels), 2)
+        if stress_levels
+        else None
+    )
+    average_muscle_soreness = (
+        round(sum(muscle_soreness_scores) / len(muscle_soreness_scores), 2)
+        if muscle_soreness_scores
+        else None
+    )
+
     return {
         "log_count": total_logs,
         "latest_weight_kg": latest_weight_kg,
@@ -1312,6 +1365,11 @@ def aggregate_daily_logs(
         "average_protein_consumed_g": average_protein_consumed_g,
         "average_carbs_consumed_g": average_carbs_consumed_g,
         "average_fat_consumed_g": average_fat_consumed_g,
+        # Phase 3C wellness telemetry
+        "average_recovery_score": average_recovery_score,
+        "average_sleep_quality": average_sleep_quality,
+        "average_stress_level": average_stress_level,
+        "average_muscle_soreness": average_muscle_soreness,
     }
 
 
@@ -1507,6 +1565,18 @@ def prepare_adaptation_input(
         goal_type=profile.get("goal_type", ""),
     )
 
+    # Phase 3C: resolve wellness telemetry from aggregated daily logs.
+    # Semantic mapping (direction preserved — no inversion applied):
+    #   progress["average_recovery_score"]  → AdaptationInput.recovery_score  (higher = better)
+    #   progress["average_sleep_quality"]   → AdaptationInput.sleep_quality   (higher = better)
+    #   progress["average_stress_level"]    → AdaptationInput.stress_score    (higher = worse, risk penalty)
+    #   progress["average_muscle_soreness"] → AdaptationInput.injury_risk     (higher = worse, risk penalty)
+    # All four remain None when absent from logs; no neutral value is invented.
+    empirical_recovery_score: Optional[float] = progress.get("average_recovery_score")
+    empirical_sleep_quality: Optional[float] = progress.get("average_sleep_quality")
+    empirical_stress_score: Optional[float] = progress.get("average_stress_level")
+    empirical_injury_risk: Optional[float] = progress.get("average_muscle_soreness")
+
     return AdaptationInput(
         current_weight_kg=current_weight,  # type: ignore[arg-type]
         target_weight_kg=profile.get("target_weight_kg"),  # type: ignore[arg-type]
@@ -1522,6 +1592,11 @@ def prepare_adaptation_input(
         nutrition_score=calculated_nutrition_score,
         training_quality=calculated_training_quality,
         plateau_probability=calculated_plateau_probability,
+        # Phase 3C wellness telemetry (None when not present in logs)
+        recovery_score=empirical_recovery_score,
+        sleep_quality=empirical_sleep_quality,
+        stress_score=empirical_stress_score,
+        injury_risk=empirical_injury_risk,
         weight_change_kg_7d=progress.get("weight_change_kg_7d"),
         weight_change_kg_14d=progress.get("weight_change_kg_14d"),
         weight_change_kg_28d=progress.get("weight_change_kg_28d"),
