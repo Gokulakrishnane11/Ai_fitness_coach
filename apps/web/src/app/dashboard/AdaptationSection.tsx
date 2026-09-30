@@ -1,8 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
-import { AdaptationDecision } from "@/lib/api";
+import { AdaptationDecision, AdaptationHistoryRecord, fetchAdaptationHistory } from "@/lib/api";
 import {
   Zap,
   Activity,
@@ -18,6 +18,9 @@ import {
   ShieldAlert,
   Moon,
   HeartPulse,
+  History,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 export interface AdaptationSectionProps {
@@ -35,6 +38,28 @@ export default function AdaptationSection({
   incompleteProfile,
   onRetry,
 }: AdaptationSectionProps) {
+  // History collapsible state
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<AdaptationHistoryRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const toggleHistory = async () => {
+    const nextState = !historyOpen;
+    setHistoryOpen(nextState);
+    if (nextState && history.length === 0) {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const res = await fetchAdaptationHistory(10);
+        setHistory(res.history || []);
+      } catch (err: unknown) {
+        setHistoryError(err instanceof Error ? err.message : "Failed to load adaptation history.");
+      } finally {
+        setHistoryLoading(false);
+      }
+    }
+  };
   // ---------------------------------------------------------------------------
   // 1. Loading State
   // ---------------------------------------------------------------------------
@@ -634,6 +659,128 @@ export default function AdaptationSection({
           )}
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* G. Compact Collapsible Adaptation History & Audit Trail                   */}
+      {/* ========================================================================= */}
+      <div className="pt-2 border-t border-gray-800/70">
+        <button
+          type="button"
+          onClick={toggleHistory}
+          className="w-full flex items-center justify-between p-3 rounded-xl bg-gray-900/60 hover:bg-gray-900 border border-gray-800 text-xs font-semibold text-gray-300 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-cyan-400" />
+            <span>Adaptation History & Decision Audit Trail</span>
+          </div>
+          {historyOpen ? (
+            <ChevronUp className="w-4 h-4 text-gray-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-gray-400" />
+          )}
+        </button>
+
+        {historyOpen && (
+          <div className="mt-3 space-y-3">
+            {historyLoading && (
+              <div className="p-4 text-center text-xs text-gray-400 flex items-center justify-center gap-2">
+                <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full" />
+                <span>Loading adaptation history...</span>
+              </div>
+            )}
+
+            {historyError && (
+              <div className="p-3 rounded-xl bg-red-950/40 border border-red-500/30 text-xs text-red-300">
+                {historyError}
+              </div>
+            )}
+
+            {!historyLoading && !historyError && history.length === 0 && (
+              <div className="p-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center text-xs text-gray-400">
+                No past adaptation decisions recorded yet. Decisions will be saved as telemetry and logs are recorded.
+              </div>
+            )}
+
+            {!historyLoading && history.length > 0 && (
+              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                {history.map((record) => {
+                  const dateStr = record.created_at
+                    ? new Date(record.created_at).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "Previous Decision";
+                  const rfPercent = (record.readiness_factor * 100).toFixed(0);
+                  const isDeload = record.workout_adjustment?.deload_recommended;
+                  const isFatigue = record.high_fatigue_flag;
+
+                  return (
+                    <div
+                      key={record.id}
+                      className="p-3 rounded-xl bg-gray-900/70 border border-gray-800/80 text-xs space-y-2 hover:border-gray-700/80 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[11px] text-gray-400">{dateStr}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-cyan-300">
+                            {rfPercent}% Readiness
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase font-mono ${
+                              isDeload
+                                ? "bg-purple-950 text-purple-300 border border-purple-800"
+                                : isFatigue
+                                ? "bg-rose-950 text-rose-300 border border-rose-800"
+                                : record.readiness_factor >= 1.0
+                                ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                                : "bg-gray-800 text-gray-300"
+                            }`}
+                          >
+                            {isDeload
+                              ? "Deload"
+                              : isFatigue
+                              ? "Fatigued"
+                              : record.readiness_factor >= 1.0
+                              ? "Optimal"
+                              : "Moderate"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {record.coaching_summary && (
+                        <p className="text-gray-300 text-[11px] leading-relaxed">
+                          &ldquo;{record.coaching_summary}&rdquo;
+                        </p>
+                      )}
+
+                      <div className="grid grid-cols-4 gap-1 text-[10px] text-center pt-1 border-t border-gray-800/60 font-mono text-gray-400">
+                        <div>
+                          <span>Rec: </span>
+                          <strong className="text-emerald-400">{record.recovery_score}</strong>
+                        </div>
+                        <div>
+                          <span>Sleep: </span>
+                          <strong className="text-blue-400">{record.sleep_quality}</strong>
+                        </div>
+                        <div>
+                          <span>Stress: </span>
+                          <strong className="text-purple-400">{record.stress_score}</strong>
+                        </div>
+                        <div>
+                          <span>Sore: </span>
+                          <strong className="text-rose-400">{record.injury_risk}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

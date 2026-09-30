@@ -25,6 +25,9 @@ import {
   TrendingUp,
   Target,
   Sparkles,
+  Activity,
+  HeartPulse,
+  Moon,
 } from "lucide-react";
 
 function getTodayDateString(): string {
@@ -56,6 +59,10 @@ export default function ProgressPage() {
     workout_completed: false,
     energy_rating: "",
     notes: "",
+    recovery_score: "",
+    sleep_quality: "",
+    stress_level: "",
+    muscle_soreness: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -109,10 +116,35 @@ export default function ProgressPage() {
           workout_completed: existing.workout_completed,
           energy_rating: existing.energy_rating !== null ? String(existing.energy_rating) : "",
           notes: existing.notes || "",
+          recovery_score:
+            existing.recovery_score !== null && existing.recovery_score !== undefined
+              ? String(existing.recovery_score)
+              : "",
+          sleep_quality:
+            existing.sleep_quality !== null && existing.sleep_quality !== undefined
+              ? String(existing.sleep_quality)
+              : "",
+          stress_level:
+            existing.stress_level !== null && existing.stress_level !== undefined
+              ? String(existing.stress_level)
+              : "",
+          muscle_soreness:
+            existing.muscle_soreness !== null && existing.muscle_soreness !== undefined
+              ? String(existing.muscle_soreness)
+              : "",
         };
       }
       return { ...prev, log_date: newDate };
     });
+  };
+
+  const parseOptionalScore = (val: string, label: string): number | null => {
+    if (val === "" || val === null || val === undefined) return null;
+    const num = Number(val);
+    if (!Number.isInteger(num) || num < 0 || num > 100) {
+      throw new Error(`${label} must be an integer between 0 and 100.`);
+    }
+    return num;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -122,6 +154,16 @@ export default function ProgressPage() {
     setSubmitting(true);
 
     try {
+      let recovery_score: number | null = null;
+      let sleep_quality: number | null = null;
+      let stress_level: number | null = null;
+      let muscle_soreness: number | null = null;
+
+      recovery_score = parseOptionalScore(formData.recovery_score, "Recovery");
+      sleep_quality = parseOptionalScore(formData.sleep_quality, "Sleep Quality");
+      stress_level = parseOptionalScore(formData.stress_level, "Stress Level");
+      muscle_soreness = parseOptionalScore(formData.muscle_soreness, "Muscle Soreness");
+
       const req: DailyLogCreateRequest = {
         log_date: formData.log_date,
         weight_kg: formData.weight_kg !== "" ? parseFloat(formData.weight_kg) : null,
@@ -139,6 +181,10 @@ export default function ProgressPage() {
         energy_rating:
           formData.energy_rating !== "" ? parseInt(formData.energy_rating, 10) : null,
         notes: formData.notes.trim() !== "" ? formData.notes.trim() : null,
+        ...(recovery_score !== null ? { recovery_score } : {}),
+        ...(sleep_quality !== null ? { sleep_quality } : {}),
+        ...(stress_level !== null ? { stress_level } : {}),
+        ...(muscle_soreness !== null ? { muscle_soreness } : {}),
       };
 
       await submitDailyLog(req);
@@ -382,7 +428,199 @@ export default function ProgressPage() {
             </div>
           </div>
 
-          {/* Row 4: Notes */}
+          {/* Row 4: Daily Wellness Telemetry (Optional) */}
+          <div className="space-y-4 pt-4 border-t border-gray-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <div>
+                <h3 className="text-sm font-bold text-gray-200 flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-cyan-400" />
+                  Daily Wellness Telemetry
+                  <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+                    Optional
+                  </span>
+                </h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Subjective physiological telemetry that dynamically refines your AI readiness, workout volume, and recovery days.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Recovery */}
+              <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="recovery-score-slider" className="text-xs font-semibold text-gray-200 flex items-center gap-1.5 cursor-pointer">
+                    <Activity className="w-3.5 h-3.5 text-emerald-400" />
+                    Recovery
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-emerald-400">
+                      {formData.recovery_score !== "" ? `${formData.recovery_score} / 100` : "Not set"}
+                    </span>
+                    {formData.recovery_score !== "" && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, recovery_score: "" })}
+                        className="text-[10px] text-gray-500 hover:text-gray-300 transition underline"
+                        aria-label="Clear recovery score"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  id="recovery-score-slider"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={formData.recovery_score === "" ? 50 : formData.recovery_score}
+                  onChange={(e) => setFormData({ ...formData, recovery_score: e.target.value })}
+                  aria-label="Recovery (0 = Very poor recovery, 100 = Fully recovered)"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={formData.recovery_score === "" ? undefined : parseInt(formData.recovery_score, 10)}
+                  className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+                <div className="flex justify-between text-[10px] text-gray-500 font-medium">
+                  <span>0 = Very poor recovery</span>
+                  <span>100 = Fully recovered</span>
+                </div>
+              </div>
+
+              {/* Sleep Quality */}
+              <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="sleep-quality-slider" className="text-xs font-semibold text-gray-200 flex items-center gap-1.5 cursor-pointer">
+                    <Moon className="w-3.5 h-3.5 text-blue-400" />
+                    Sleep Quality
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-blue-400">
+                      {formData.sleep_quality !== "" ? `${formData.sleep_quality} / 100` : "Not set"}
+                    </span>
+                    {formData.sleep_quality !== "" && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, sleep_quality: "" })}
+                        className="text-[10px] text-gray-500 hover:text-gray-300 transition underline"
+                        aria-label="Clear sleep quality"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  id="sleep-quality-slider"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={formData.sleep_quality === "" ? 50 : formData.sleep_quality}
+                  onChange={(e) => setFormData({ ...formData, sleep_quality: e.target.value })}
+                  aria-label="Sleep Quality (0 = Very poor sleep, 100 = Excellent sleep)"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={formData.sleep_quality === "" ? undefined : parseInt(formData.sleep_quality, 10)}
+                  className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                />
+                <div className="flex justify-between text-[10px] text-gray-500 font-medium">
+                  <span>0 = Very poor sleep</span>
+                  <span>100 = Excellent sleep</span>
+                </div>
+              </div>
+
+              {/* Stress Level */}
+              <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="stress-level-slider" className="text-xs font-semibold text-gray-200 flex items-center gap-1.5 cursor-pointer">
+                    <HeartPulse className="w-3.5 h-3.5 text-purple-400" />
+                    Stress Level
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-purple-400">
+                      {formData.stress_level !== "" ? `${formData.stress_level} / 100` : "Not set"}
+                    </span>
+                    {formData.stress_level !== "" && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, stress_level: "" })}
+                        className="text-[10px] text-gray-500 hover:text-gray-300 transition underline"
+                        aria-label="Clear stress level"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  id="stress-level-slider"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={formData.stress_level === "" ? 50 : formData.stress_level}
+                  onChange={(e) => setFormData({ ...formData, stress_level: e.target.value })}
+                  aria-label="Stress Level (0 = No stress, 100 = Extreme stress)"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={formData.stress_level === "" ? undefined : parseInt(formData.stress_level, 10)}
+                  className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-purple-400"
+                />
+                <div className="flex justify-between text-[10px] text-gray-500 font-medium">
+                  <span>0 = No stress</span>
+                  <span>100 = Extreme stress</span>
+                </div>
+              </div>
+
+              {/* Muscle Soreness */}
+              <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="muscle-soreness-slider" className="text-xs font-semibold text-gray-200 flex items-center gap-1.5 cursor-pointer">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                    Muscle Soreness
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-amber-400">
+                      {formData.muscle_soreness !== "" ? `${formData.muscle_soreness} / 100` : "Not set"}
+                    </span>
+                    {formData.muscle_soreness !== "" && (
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, muscle_soreness: "" })}
+                        className="text-[10px] text-gray-500 hover:text-gray-300 transition underline"
+                        aria-label="Clear muscle soreness"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  id="muscle-soreness-slider"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={formData.muscle_soreness === "" ? 50 : formData.muscle_soreness}
+                  onChange={(e) => setFormData({ ...formData, muscle_soreness: e.target.value })}
+                  aria-label="Muscle Soreness (0 = No soreness, 100 = Extreme soreness)"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={formData.muscle_soreness === "" ? undefined : parseInt(formData.muscle_soreness, 10)}
+                  className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                />
+                <div className="flex justify-between text-[10px] text-gray-500 font-medium">
+                  <span>0 = No soreness</span>
+                  <span>100 = Extreme soreness</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 5: Notes */}
           <div>
             <label className="text-xs font-semibold text-gray-300 flex items-center gap-1.5 mb-2">
               <FileText className="w-3.5 h-3.5 text-gray-400" /> Daily Notes
@@ -466,6 +704,7 @@ export default function ProgressPage() {
                     <th className="py-3 px-3">Water</th>
                     <th className="py-3 px-3">Workout</th>
                     <th className="py-3 px-3">Energy</th>
+                    <th className="py-3 px-3">Wellness</th>
                     <th className="py-3 px-3">Notes</th>
                   </tr>
                 </thead>
@@ -524,6 +763,37 @@ export default function ProgressPage() {
                           <span className="font-mono text-yellow-300">
                             {log.energy_rating} / 10
                           </span>
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-3 text-xs font-mono">
+                        {(log.recovery_score !== null && log.recovery_score !== undefined) ||
+                        (log.sleep_quality !== null && log.sleep_quality !== undefined) ||
+                        (log.stress_level !== null && log.stress_level !== undefined) ||
+                        (log.muscle_soreness !== null && log.muscle_soreness !== undefined) ? (
+                          <div className="flex flex-wrap gap-1 text-[11px]">
+                            {log.recovery_score != null && (
+                              <span className="px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40" title="Recovery Score">
+                                R:{log.recovery_score}
+                              </span>
+                            )}
+                            {log.sleep_quality != null && (
+                              <span className="px-1.5 py-0.5 rounded bg-blue-950/60 text-blue-400 border border-blue-800/40" title="Sleep Quality">
+                                S:{log.sleep_quality}
+                              </span>
+                            )}
+                            {log.stress_level != null && (
+                              <span className="px-1.5 py-0.5 rounded bg-purple-950/60 text-purple-400 border border-purple-800/40" title="Stress Level">
+                                Str:{log.stress_level}
+                              </span>
+                            )}
+                            {log.muscle_soreness != null && (
+                              <span className="px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-400 border border-amber-800/40" title="Muscle Soreness">
+                                Sor:{log.muscle_soreness}
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-gray-500">—</span>
                         )}
@@ -593,6 +863,19 @@ export default function ProgressPage() {
                       <span className="text-emerald-400">P: {log.protein_consumed_g ?? 0}g</span>
                       <span className="text-purple-400">C: {log.carbs_consumed_g ?? 0}g</span>
                       <span className="text-amber-400">F: {log.fat_consumed_g ?? 0}g</span>
+                    </div>
+                  )}
+
+                  {(log.recovery_score != null ||
+                    log.sleep_quality != null ||
+                    log.stress_level != null ||
+                    log.muscle_soreness != null) && (
+                    <div className="text-xs font-mono pt-1 border-t border-gray-800/80 flex flex-wrap gap-1.5 items-center">
+                      <span className="text-[10px] text-gray-500 uppercase">Wellness:</span>
+                      {log.recovery_score != null && <span className="text-emerald-400">Rec {log.recovery_score}</span>}
+                      {log.sleep_quality != null && <span className="text-blue-400">Sleep {log.sleep_quality}</span>}
+                      {log.stress_level != null && <span className="text-purple-400">Stress {log.stress_level}</span>}
+                      {log.muscle_soreness != null && <span className="text-amber-400">Soreness {log.muscle_soreness}</span>}
                     </div>
                   )}
 

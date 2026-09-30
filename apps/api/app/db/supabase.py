@@ -48,6 +48,7 @@ _OFFLINE_TEST_DB: Dict[str, Dict[str, Any]] = {
     "daily_logs": {},
     "simulations": {},
     "journal_entries": {},
+    "adaptation_history": {},
 }
 
 
@@ -316,4 +317,91 @@ class WorkoutPlanRepository:
             return None
         active_plans.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
         return active_plans[0]
+
+
+class AdaptationHistoryRepository:
+    """Production Repository for adaptation_history table with Supabase RLS JWT forwarding."""
+
+    @staticmethod
+    def _serialize_record(data: Dict[str, Any]) -> Dict[str, Any]:
+        """Converts any nested Pydantic models or date/time objects into JSON-serializable primitives."""
+        def _conv(v: Any) -> Any:
+            if hasattr(v, "model_dump"):
+                return v.model_dump(mode="json")
+            if isinstance(v, dict):
+                return {k: _conv(val) for k, val in v.items()}
+            if isinstance(v, (list, tuple)):
+                return [_conv(item) for item in v]
+            return v
+        return {k: _conv(v) for k, v in data.items()}
+
+    @classmethod
+    def save_history(
+        cls,
+        user_id: str,
+        record_data: Dict[str, Any],
+        user_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Persists a single adaptation decision and input snapshot for the authenticated user.
+        Forwards JWT Bearer token so PostgreSQL auth.uid() = user_id evaluates correctly under RLS.
+        """
+        serialized = cls._serialize_record(record_data)
+        record = {**serialized, "user_id": user_id}
+        if "created_at" not in record or not record["created_at"]:
+            record["created_at"] = datetime.now(timezone.utc).isoformat()
+
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = client.table("adaptation_history").insert(record).execute()
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            raise RuntimeError("Supabase adaptation_history insert returned empty response data")
+
+        history_id = f"adapt_{uuid.uuid4()}"
+        record["id"] = history_id
+        _OFFLINE_TEST_DB["adaptation_history"][history_id] = record
+        return record
+
+    @classmethod
+    def get_history(
+        cls,
+        user_id: str,
+        user_token: Optional[str] = None,
+        limit: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieves the authenticated user's adaptation decision history ordered newest first (created_at DESC).
+        Enforces user isolation and clamps limit between 1 and 100.
+        """
+        clamped_limit = max(1, min(100, int(limit)))
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = (
+                client.table("adaptation_history")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(clamped_limit)
+                .execute()
+            )
+            return res.data if res.data is not None else []
+
+        user_records = [
+            dict(r)
+            for r in _OFFLINE_TEST_DB["adaptation_history"].values()
+            if r.get("user_id") == user_id
+        ]
+        user_records.sort(key=lambda r: str(r.get("created_at") or ""), reverse=True)
+        return user_records[:clamped_limit]
+
+    @classmethod
+    def get_latest_history(
+        cls,
+        user_id: str,
+        user_token: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Returns the most recent adaptation decision record for the user, or None if none exist."""
+        history = cls.get_history(user_id=user_id, user_token=user_token, limit=1)
+        return history[0] if history else None
 

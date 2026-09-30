@@ -63,6 +63,7 @@ export interface MealPlanRequest {
   target_carbs_g: number;
   target_fat_g: number;
   dietary_preference: string;
+  apply_adaptation?: boolean;
 }
 
 export interface MealPlanItem {
@@ -136,6 +137,10 @@ export interface DailyLog {
   workout_completed: boolean;
   energy_rating: number | null;
   notes: string | null;
+  recovery_score?: number | null;
+  sleep_quality?: number | null;
+  stress_level?: number | null;
+  muscle_soreness?: number | null;
   created_at: string;
 }
 
@@ -150,6 +155,10 @@ export interface DailyLogCreateRequest {
   workout_completed?: boolean;
   energy_rating?: number | null;
   notes?: string | null;
+  recovery_score?: number | null;
+  sleep_quality?: number | null;
+  stress_level?: number | null;
+  muscle_soreness?: number | null;
 }
 
 export interface DailyLogsResponse {
@@ -187,6 +196,34 @@ export interface AdaptationDecision {
   actionable_recommendations: string[];
   coaching_summary: string;
   objective_data_available: boolean;
+}
+
+export interface AdaptationHistoryRecord {
+  id: string;
+  user_id: string;
+  created_at: string;
+  readiness_factor: number;
+  high_fatigue_flag: boolean;
+  plateau_detected: boolean;
+  adherence_score: number;
+  recovery_score: number;
+  stress_score: number;
+  sleep_quality: number;
+  injury_risk: number;
+  plateau_probability: number;
+  diet_adjustment: DietAdjustment;
+  workout_adjustment: WorkoutAdjustment;
+  actionable_recommendations: string[];
+  coaching_summary: string;
+  objective_data_available: boolean;
+  active_meal_plan_id?: string | null;
+  active_workout_plan_id?: string | null;
+  input_snapshot: Record<string, any>;
+}
+
+export interface AdaptationHistoryResponse {
+  history: AdaptationHistoryRecord[];
+  count: number;
 }
 
 export class AdaptationApiError extends Error {
@@ -435,6 +472,39 @@ export async function fetchAdaptationDecision(token?: string): Promise<Adaptatio
     throw new AdaptationApiError(
       res.status,
       errorDetail || `Failed to fetch adaptation decision (HTTP ${res.status})`,
+      errorDetail
+    );
+  }
+
+  return res.json();
+}
+
+/**
+ * Fetches the historical adaptation decisions and audit trail for the authenticated user.
+ */
+export async function fetchAdaptationHistory(
+  limit: number = 30,
+  token?: string
+): Promise<AdaptationHistoryResponse> {
+  const authToken = await getAuthToken(token);
+  const clampedLimit = Math.max(1, Math.min(100, limit));
+  const res = await fetch(`${API_BASE_URL}/adaptation/history?limit=${clampedLimit}`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+
+  if (!res.ok) {
+    let errorDetail: string | undefined;
+    try {
+      const errData = await res.json();
+      if (errData && typeof errData === "object" && typeof errData.detail === "string") {
+        errorDetail = errData.detail;
+      }
+    } catch {
+      // Non-JSON response body
+    }
+    throw new AdaptationApiError(
+      res.status,
+      errorDetail || `Failed to fetch adaptation history (HTTP ${res.status})`,
       errorDetail
     );
   }
