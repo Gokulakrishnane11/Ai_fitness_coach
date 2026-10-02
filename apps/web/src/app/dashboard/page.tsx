@@ -13,9 +13,11 @@ import {
   fetchAdaptationDecision,
   AdaptationDecision,
   AdaptationApiError,
+  fetchActiveMealPlan,
+  fetchActiveWorkoutPlan,
 } from "@/lib/api";
 import AdaptationSection from "./AdaptationSection";
-import { Flame, Dumbbell, Droplets, Target, ShieldCheck, AlertTriangle, Utensils } from "lucide-react";
+import { Flame, Dumbbell, Droplets, Target, ShieldCheck, AlertTriangle, Utensils, Sparkles } from "lucide-react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
@@ -66,6 +68,20 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const refreshActivePlans = useCallback(async () => {
+    try {
+      const [mPlan, wPlan] = await Promise.all([
+        fetchActiveMealPlan(),
+        fetchActiveWorkoutPlan(),
+      ]);
+      if (mPlan) setMealPlan(mPlan);
+      if (wPlan) setWorkoutPlan(wPlan);
+      await fetchAdaptation();
+    } catch {
+      // non-fatal
+    }
+  }, [fetchAdaptation]);
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.replace("/login");
@@ -98,18 +114,21 @@ export default function DashboardPage() {
           // 1. Fetch adaptation decisions independently (non-blocking)
           fetchAdaptation();
 
-          // 2. Meal plan generation
+          // 2. Meal plan: fetch active plan first, generate only if none active
           if (data.target_metrics) {
             setMealPlanLoading(true);
             setMealPlanError(null);
             try {
-              const plan = await generateMealPlan({
-                target_calories: data.target_metrics.target_calories,
-                target_protein_g: data.target_metrics.protein_g,
-                target_carbs_g: data.target_metrics.carbs_g,
-                target_fat_g: data.target_metrics.fat_g,
-                dietary_preference: data.dietary_preference,
-              });
+              let plan = await fetchActiveMealPlan();
+              if (!plan) {
+                plan = await generateMealPlan({
+                  target_calories: data.target_metrics.target_calories,
+                  target_protein_g: data.target_metrics.protein_g,
+                  target_carbs_g: data.target_metrics.carbs_g,
+                  target_fat_g: data.target_metrics.fat_g,
+                  dietary_preference: data.dietary_preference,
+                });
+              }
               setMealPlan(plan);
             } catch (planErr: unknown) {
               const msg = planErr instanceof Error ? planErr.message : "Failed to load meal plan";
@@ -119,15 +138,18 @@ export default function DashboardPage() {
             }
           }
 
-          // 3. Workout plan generation
+          // 3. Workout plan: fetch active plan first, generate only if none active
           setWorkoutPlanLoading(true);
           setWorkoutPlanError(null);
           try {
-            const wPlan = await generateWorkoutPlan({
-              goal_type: data.goal_type,
-              workout_days_per_week: data.workout_days_per_week,
-              experience_level: data.experience_level,
-            });
+            let wPlan = await fetchActiveWorkoutPlan();
+            if (!wPlan) {
+              wPlan = await generateWorkoutPlan({
+                goal_type: data.goal_type,
+                workout_days_per_week: data.workout_days_per_week,
+                experience_level: data.experience_level,
+              });
+            }
             setWorkoutPlan(wPlan);
           } catch (wErr: unknown) {
             const msg = wErr instanceof Error ? wErr.message : "Failed to load workout plan";
@@ -262,6 +284,7 @@ export default function DashboardPage() {
         error={adaptationError}
         incompleteProfile={adaptationIncomplete}
         onRetry={fetchAdaptation}
+        onPlansUpdated={refreshActivePlans}
       />
 
       {/* Daily Meal Plan Section */}
@@ -274,9 +297,26 @@ export default function DashboardPage() {
             </h3>
           </div>
           {mealPlan && (
-            <span className="text-xs font-mono text-cyan-400/90 bg-cyan-950/40 border border-cyan-500/30 px-2.5 py-1 rounded-md w-fit">
-              Deterministic Portions Active
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {adaptation && (adaptation.diet_adjustment.calorie_delta !== 0 || adaptation.diet_adjustment.protein_delta_g !== 0) && (
+                <span className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-2.5 py-1 rounded-md">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>
+                    Adjusted by AI Adaptation:{" "}
+                    {adaptation.diet_adjustment.calorie_delta > 0
+                      ? `+${adaptation.diet_adjustment.calorie_delta}`
+                      : adaptation.diet_adjustment.calorie_delta}{" "}
+                    kcal
+                    {adaptation.diet_adjustment.protein_delta_g !== 0
+                      ? ` · ${adaptation.diet_adjustment.protein_delta_g > 0 ? `+${adaptation.diet_adjustment.protein_delta_g}` : adaptation.diet_adjustment.protein_delta_g}g protein`
+                      : ""}
+                  </span>
+                </span>
+              )}
+              <span className="text-xs font-mono text-cyan-400/90 bg-cyan-950/40 border border-cyan-500/30 px-2.5 py-1 rounded-md w-fit">
+                Deterministic Portions Active
+              </span>
+            </div>
           )}
         </div>
 
@@ -398,6 +438,17 @@ export default function DashboardPage() {
           </div>
           {workoutPlan && (
             <div className="flex items-center gap-2 flex-wrap">
+              {adaptation && (adaptation.workout_adjustment.intensity !== "maintain" || adaptation.workout_adjustment.volume !== "medium" || adaptation.workout_adjustment.recovery_days > 0 || adaptation.workout_adjustment.deload_recommended) && (
+                <span className="flex items-center gap-1.5 text-xs font-mono text-emerald-300 bg-emerald-950/70 border border-emerald-500/40 px-2.5 py-1 rounded-md">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>
+                    Adjusted by AI Adaptation:{" "}
+                    {adaptation.workout_adjustment.deload_recommended
+                      ? "Deload Protocol Active"
+                      : `${adaptation.workout_adjustment.intensity} intensity${adaptation.workout_adjustment.recovery_days > 0 ? ` · +${adaptation.workout_adjustment.recovery_days} recovery day` : ""}`}
+                  </span>
+                </span>
+              )}
               <span className="text-xs font-mono text-emerald-400/90 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-md w-fit">
                 {workoutPlan.split_type} Split
               </span>

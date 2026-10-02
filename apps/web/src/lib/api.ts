@@ -181,6 +181,23 @@ export interface WorkoutAdjustment {
   deload_recommended: boolean;
 }
 
+export interface AdaptationReason {
+  signal: string;
+  value?: number | string | boolean | null;
+  effect: "positive" | "neutral" | "negative";
+  message: string;
+}
+
+export interface AdaptationFeedbackOutcome {
+  trajectory: "improving" | "stable" | "declining" | "insufficient_data";
+  recovery_delta?: number | null;
+  stress_delta?: number | null;
+  soreness_delta?: number | null;
+  adherence_delta?: number | null;
+  previous_history_id?: string | null;
+  days_since_previous?: number | null;
+}
+
 export interface AdaptationDecision {
   adherence_score: number;
   recovery_score: number;
@@ -196,6 +213,8 @@ export interface AdaptationDecision {
   actionable_recommendations: string[];
   coaching_summary: string;
   objective_data_available: boolean;
+  reasons?: AdaptationReason[];
+  feedback_outcome?: AdaptationFeedbackOutcome | null;
 }
 
 export interface AdaptationHistoryRecord {
@@ -219,6 +238,8 @@ export interface AdaptationHistoryRecord {
   active_meal_plan_id?: string | null;
   active_workout_plan_id?: string | null;
   input_snapshot: Record<string, any>;
+  reasons?: AdaptationReason[];
+  feedback_outcome?: AdaptationFeedbackOutcome | null;
 }
 
 export interface AdaptationHistoryResponse {
@@ -425,15 +446,25 @@ export async function fetchDailyLogs(token?: string): Promise<DailyLogsResponse>
  * Fetches the computed AI adaptation decision for the authenticated user.
  * Reuses the existing authentication token handling and API base URL conventions.
  *
+ * Supports both /adaptation (default, backward-compatible) and explicit /adaptation/current.
+ *
  * Status code handling:
  * - 401: Unauthenticated request (user not logged in or invalid token)
  * - 404: Profile not found (user has not completed onboarding)
  * - 422: Incomplete profile or missing target metrics required for adaptation
  * - Other non-success HTTP codes: Meaningful error message
  */
-export async function fetchAdaptationDecision(token?: string): Promise<AdaptationDecision> {
-  const authToken = await getAuthToken(token);
-  const res = await fetch(`${API_BASE_URL}/adaptation`, {
+export async function fetchAdaptationDecision(
+  tokenOrOptions?: string | { useCurrentEndpoint?: boolean; token?: string }
+): Promise<AdaptationDecision> {
+  const options =
+    typeof tokenOrOptions === "object" && tokenOrOptions !== null
+      ? tokenOrOptions
+      : { token: typeof tokenOrOptions === "string" ? tokenOrOptions : undefined };
+
+  const authToken = await getAuthToken(options.token);
+  const endpoint = options.useCurrentEndpoint ? "/adaptation/current" : "/adaptation";
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
     headers: { Authorization: `Bearer ${authToken}` },
   });
 
@@ -480,6 +511,13 @@ export async function fetchAdaptationDecision(token?: string): Promise<Adaptatio
 }
 
 /**
+ * Semantic helper to fetch the current adaptation decision via /adaptation/current.
+ */
+export async function fetchCurrentAdaptation(token?: string): Promise<AdaptationDecision> {
+  return fetchAdaptationDecision({ useCurrentEndpoint: true, token });
+}
+
+/**
  * Fetches the historical adaptation decisions and audit trail for the authenticated user.
  */
 export async function fetchAdaptationHistory(
@@ -512,4 +550,83 @@ export async function fetchAdaptationHistory(
   return res.json();
 }
 
+/**
+ * Fetches the user's currently active meal plan, or null if none is active.
+ */
+export async function fetchActiveMealPlan(token?: string): Promise<MealPlanResponse | null> {
+  const authToken = await getAuthToken(token);
+  const res = await fetch(`${API_BASE_URL}/planning/active-meal-plan`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    throw new Error(`Failed to fetch active meal plan (HTTP ${res.status})`);
+  }
+  const data = await res.json();
+  return data || null;
+}
 
+/**
+ * Fetches the user's currently active workout plan, or null if none is active.
+ */
+export async function fetchActiveWorkoutPlan(token?: string): Promise<WorkoutPlanResponse | null> {
+  const authToken = await getAuthToken(token);
+  const res = await fetch(`${API_BASE_URL}/planning/active-workout-plan`, {
+    headers: { Authorization: `Bearer ${authToken}` },
+  });
+  if (!res.ok) {
+    if (res.status === 404) return null;
+    throw new Error(`Failed to fetch active workout plan (HTTP ${res.status})`);
+  }
+  const data = await res.json();
+  return data || null;
+}
+
+export interface ApplyAdaptationResponse {
+  status: "applied" | "already_applied";
+  applied: boolean;
+  message: string;
+  decision: AdaptationDecision;
+  meal_plan: MealPlanResponse;
+  workout_plan: WorkoutPlanResponse;
+  active_meal_plan_id?: string | null;
+  active_workout_plan_id?: string | null;
+}
+
+/**
+ * Applies the current adaptation decision to the user's active meal and workout plans.
+ * Idempotent: returns already_applied without duplicating plans if already up to date.
+ */
+export async function applyAdaptationToPlans(
+  force: boolean = false,
+  token?: string
+): Promise<ApplyAdaptationResponse> {
+  const authToken = await getAuthToken(token);
+  const res = await fetch(`${API_BASE_URL}/planning/apply-adaptation`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify({ force_apply: force }),
+  });
+
+  if (!res.ok) {
+    let errorDetail: string | undefined;
+    try {
+      const errData = await res.json();
+      if (errData && typeof errData === "object" && "detail" in errData) {
+        errorDetail = errData.detail;
+      }
+    } catch {
+      // Non-JSON response body
+    }
+    throw new AdaptationApiError(
+      res.status,
+      errorDetail || `Failed to apply adaptation (HTTP ${res.status})`,
+      errorDetail
+    );
+  }
+
+  return res.json();
+}

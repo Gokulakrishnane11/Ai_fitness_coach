@@ -13,6 +13,7 @@ from app.db.supabase import (
     JournalRepository,
     MealPlanRepository,
     WorkoutPlanRepository,
+    AdaptationHistoryRepository,
 )
 from app.engine.bmr_tdee import calculate_target_metrics
 
@@ -35,6 +36,25 @@ class WorkoutAdjustment(BaseModel):
     recovery_days: int = Field(0, ge=0, le=7, description="Number of additional recovery days to inject")
     cardio_minutes: int = Field(0, ge=0, le=120, description="Cardio minutes recommendation")
     deload_recommended: bool = Field(False, description="Flag indicating if a deload week is recommended")
+
+
+class AdaptationReason(BaseModel):
+    signal: str = Field(..., description="The name of the evaluated signal or dimension")
+    value: Optional[Union[int, float, str, bool]] = Field(None, description="The measured or evaluated value of the signal")
+    effect: Literal["positive", "neutral", "negative"] = Field("neutral", description="The qualitative effect of this signal on adaptation")
+    message: str = Field(..., description="Human-readable explanation of why this signal affected the plan")
+
+
+class AdaptationFeedbackOutcome(BaseModel):
+    trajectory: Literal["improving", "stable", "declining", "insufficient_data"] = Field(
+        "insufficient_data", description="Outcome trajectory relative to previous adaptation"
+    )
+    recovery_delta: Optional[float] = Field(None, description="Recovery score delta (current - previous)")
+    stress_delta: Optional[float] = Field(None, description="Stress score delta (current - previous)")
+    soreness_delta: Optional[float] = Field(None, description="Muscle soreness / injury risk delta (current - previous)")
+    adherence_delta: Optional[float] = Field(None, description="Adherence percentage delta (current - previous)")
+    previous_history_id: Optional[str] = Field(None, description="ID of the previous adaptation history record")
+    days_since_previous: Optional[int] = Field(None, description="Days elapsed since previous adaptation record")
 
 
 class AdaptationDecision(BaseModel):
@@ -62,6 +82,11 @@ class AdaptationDecision(BaseModel):
             "score fields are neutral defaults, not measurements."
         ),
     )
+    reasons: List[AdaptationReason] = Field(default_factory=list, description="Structured explanation of driving signals")
+    feedback_outcome: Optional[AdaptationFeedbackOutcome] = Field(
+        None, description="Observational feedback comparing current state against previous adaptation"
+    )
+
 
 
 class AdaptationInput(BaseModel):
@@ -822,7 +847,10 @@ def calculate_diet_adjustment(
 # Centralized Adaptation Decision Engine
 # ---------------------------------------------------------------------------
 
-def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
+def compute_adaptation(
+    input_data: AdaptationInput,
+    feedback_outcome: Optional[AdaptationFeedbackOutcome] = None,
+) -> AdaptationDecision:
     """
     Computes a deterministic, centralized AdaptationDecision from an AdaptationInput payload.
 
@@ -866,6 +894,16 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
             ),
             actionable_recommendations=[],
             coaching_summary="Baseline targets active. Maintain consistent logging to enable personalized adaptations.",
+            objective_data_available=False,
+            reasons=[
+                AdaptationReason(
+                    signal="baseline",
+                    value=input_data.log_count,
+                    effect="neutral",
+                    message="Baseline targets active. Maintain consistent logging to enable personalized adaptations.",
+                )
+            ],
+            feedback_outcome=feedback_outcome,
         )
 
     # 2. Evaluate Empirical Scores (using unimpaired neutral fallbacks for missing signals)
@@ -1016,6 +1054,195 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
             target_calories=input_data.target_calories,
         )
 
+    # 8. Structured Adaptation Reasons (Explanatory metadata)
+    reasons: List[AdaptationReason] = []
+    if not objective_data_available:
+        reasons.append(
+            AdaptationReason(
+                signal="baseline",
+                value=None,
+                effect="neutral",
+                message="Insufficient objective telemetry to adapt plan; baseline targets maintained.",
+            )
+        )
+    else:
+        # Recovery Capacity
+        if input_data.recovery_score is not None and eval_recovery is not None:
+            if eval_recovery < 50:
+                reasons.append(
+                    AdaptationReason(
+                        signal="recovery_score",
+                        value=input_data.recovery_score,
+                        effect="negative",
+                        message="Low recovery capacity detected",
+                    )
+                )
+            elif eval_recovery >= 80:
+                reasons.append(
+                    AdaptationReason(
+                        signal="recovery_score",
+                        value=input_data.recovery_score,
+                        effect="positive",
+                        message="Optimal physiological recovery observed",
+                    )
+                )
+
+        # Sleep Quality
+        if input_data.sleep_quality is not None and eval_sleep is not None:
+            if eval_sleep < 60:
+                reasons.append(
+                    AdaptationReason(
+                        signal="sleep_quality",
+                        value=input_data.sleep_quality,
+                        effect="negative",
+                        message="Poor sleep quality reported",
+                    )
+                )
+            elif eval_sleep >= 80:
+                reasons.append(
+                    AdaptationReason(
+                        signal="sleep_quality",
+                        value=input_data.sleep_quality,
+                        effect="positive",
+                        message="High sleep quality supporting physiological adaptation",
+                    )
+                )
+
+        # Systemic Stress
+        if input_data.stress_score is not None and eval_stress is not None:
+            if eval_stress >= 60:
+                reasons.append(
+                    AdaptationReason(
+                        signal="stress_score",
+                        value=input_data.stress_score,
+                        effect="negative",
+                        message="Elevated stress detected",
+                    )
+                )
+            elif eval_stress <= 30:
+                reasons.append(
+                    AdaptationReason(
+                        signal="stress_score",
+                        value=input_data.stress_score,
+                        effect="positive",
+                        message="Low systemic stress levels reported",
+                    )
+                )
+
+        # Muscle Soreness / Injury Risk
+        if input_data.injury_risk is not None and eval_injury is not None:
+            if eval_injury >= 50:
+                reasons.append(
+                    AdaptationReason(
+                        signal="injury_risk",
+                        value=input_data.injury_risk,
+                        effect="negative",
+                        message="Elevated muscle soreness detected",
+                    )
+                )
+            elif eval_injury <= 25:
+                reasons.append(
+                    AdaptationReason(
+                        signal="injury_risk",
+                        value=input_data.injury_risk,
+                        effect="positive",
+                        message="Minimal muscle soreness reported",
+                    )
+                )
+
+        # Adherence Consistency
+        if input_data.adherence_percent is not None and eval_adherence is not None:
+            if eval_adherence < 60:
+                reasons.append(
+                    AdaptationReason(
+                        signal="adherence",
+                        value=input_data.adherence_percent,
+                        effect="negative",
+                        message="Low target adherence observed; prioritizing routine stabilization",
+                    )
+                )
+            elif eval_adherence >= 80:
+                reasons.append(
+                    AdaptationReason(
+                        signal="adherence",
+                        value=input_data.adherence_percent,
+                        effect="positive",
+                        message="Strong consistency with nutritional and workout targets",
+                    )
+                )
+
+        # Plateau Detection
+        if plateau_detected:
+            reasons.append(
+                AdaptationReason(
+                    signal="plateau",
+                    value=input_data.plateau_probability,
+                    effect="negative",
+                    message="Rate of progress has stalled; adjusting stimuli",
+                )
+            )
+
+        # Feedback Outcome Reason (Observational trajectory since previous adaptation)
+        if feedback_outcome is not None:
+            if feedback_outcome.trajectory == "improving":
+                msg_parts = []
+                if feedback_outcome.recovery_delta is not None and feedback_outcome.recovery_delta >= 5.0:
+                    msg_parts.append("Recovery improved after the previous adaptation")
+                if feedback_outcome.stress_delta is not None and feedback_outcome.stress_delta <= -5.0:
+                    msg_parts.append("Stress decreased after the previous adaptation")
+                if feedback_outcome.soreness_delta is not None and feedback_outcome.soreness_delta <= -5.0:
+                    msg_parts.append("Muscle soreness decreased after the previous adaptation")
+                if feedback_outcome.adherence_delta is not None and feedback_outcome.adherence_delta >= 5.0:
+                    msg_parts.append("Adherence improved after the previous adaptation")
+
+                msg = ". ".join(msg_parts) + "." if msg_parts else "Recent telemetry shows an improving trajectory after the previous adaptation."
+                reasons.append(
+                    AdaptationReason(
+                        signal="adaptation_outcome",
+                        value="improving",
+                        effect="positive",
+                        message=msg,
+                    )
+                )
+            elif feedback_outcome.trajectory == "declining":
+                msg_parts = []
+                if feedback_outcome.recovery_delta is not None and feedback_outcome.recovery_delta <= -5.0:
+                    msg_parts.append("Recovery declined after the previous adaptation")
+                if feedback_outcome.stress_delta is not None and feedback_outcome.stress_delta >= 5.0:
+                    msg_parts.append("Stress increased after the previous adaptation")
+                if feedback_outcome.soreness_delta is not None and feedback_outcome.soreness_delta >= 5.0:
+                    msg_parts.append("Muscle soreness increased after the previous adaptation")
+                if feedback_outcome.adherence_delta is not None and feedback_outcome.adherence_delta <= -5.0:
+                    msg_parts.append("Adherence declined after the previous adaptation")
+
+                msg = ". ".join(msg_parts) + "." if msg_parts else "Recent telemetry shows a declining trajectory after the previous adaptation."
+                reasons.append(
+                    AdaptationReason(
+                        signal="adaptation_outcome",
+                        value="declining",
+                        effect="negative",
+                        message=msg,
+                    )
+                )
+            elif feedback_outcome.trajectory == "stable":
+                reasons.append(
+                    AdaptationReason(
+                        signal="adaptation_outcome",
+                        value="stable",
+                        effect="neutral",
+                        message="Recent recovery and adherence remain broadly stable.",
+                    )
+                )
+            elif feedback_outcome.trajectory == "insufficient_data":
+                reasons.append(
+                    AdaptationReason(
+                        signal="adaptation_outcome",
+                        value="insufficient_data",
+                        effect="neutral",
+                        message="Not enough historical data to evaluate the previous adaptation.",
+                    )
+                )
+
     return AdaptationDecision(
         adherence_score=decision_adherence,
         recovery_score=decision_recovery,
@@ -1031,6 +1258,8 @@ def compute_adaptation(input_data: AdaptationInput) -> AdaptationDecision:
         actionable_recommendations=recommendations,
         coaching_summary=coaching_summary,
         objective_data_available=objective_data_available,
+        reasons=reasons,
+        feedback_outcome=feedback_outcome,
     )
 
 
@@ -1899,6 +2128,185 @@ def ensure_target_metrics(profile: Dict[str, Any]) -> Dict[str, Any]:
     return resolved
 
 
+# ---------------------------------------------------------------------------
+# Observational Feedback Evaluator Layer (Phase 4C)
+# ---------------------------------------------------------------------------
+
+FEEDBACK_MEANINGFUL_DELTA_THRESHOLD = 5.0
+FEEDBACK_MAX_HISTORY_AGE_DAYS = 28
+
+
+def evaluate_adaptation_feedback(
+    current_input: AdaptationInput,
+    previous_history_record: Optional[Dict[str, Any]] = None,
+    reference_time: Optional[datetime] = None,
+    meaningful_threshold: float = FEEDBACK_MEANINGFUL_DELTA_THRESHOLD,
+    max_history_days: int = FEEDBACK_MAX_HISTORY_AGE_DAYS,
+) -> AdaptationFeedbackOutcome:
+    """
+    Pure, side-effect-free observational feedback evaluator.
+    Compares current adaptation input signals against previous adaptation snapshot.
+    Determines whether the trajectory is improving, stable, declining, or insufficient_data.
+
+    Direction semantics:
+      - recovery_score:  higher = better   (delta >= +threshold is improving)
+      - stress_score:    lower = better    (delta <= -threshold is improving)
+      - injury_risk:     lower = better    (delta <= -threshold is improving)
+      - adherence_pct:   higher = better   (delta >= +threshold is improving)
+
+    Guarantees:
+      - If no previous record exists or previous record is older than 28 days -> insufficient_data.
+      - If previous record had no objective data (objective_data_available is False) -> insufficient_data.
+      - If no signals can be meaningfully compared -> insufficient_data.
+      - Mixed signals without clear majority resolve to stable.
+      - Does NOT modify adaptation formulas or decision logic.
+    """
+    if not previous_history_record or not isinstance(previous_history_record, dict):
+        return AdaptationFeedbackOutcome(trajectory="insufficient_data")
+
+    prev_id = str(previous_history_record.get("id") or "") or None
+
+    # Calculate days since previous
+    prev_created_at = previous_history_record.get("created_at")
+    prev_dt = _parse_journal_timestamp(prev_created_at)
+    days_since_previous = None
+    if prev_dt is not None:
+        if reference_time is None:
+            now_dt = datetime.now(timezone.utc)
+        elif reference_time.tzinfo is None:
+            now_dt = reference_time.replace(tzinfo=timezone.utc)
+        else:
+            now_dt = reference_time.astimezone(timezone.utc)
+        days_since_previous = max(0, (now_dt - prev_dt).days)
+        if days_since_previous > max_history_days:
+            return AdaptationFeedbackOutcome(
+                trajectory="insufficient_data",
+                previous_history_id=prev_id,
+                days_since_previous=days_since_previous,
+            )
+
+    # If previous history record had no objective data, return insufficient_data
+    if previous_history_record.get("objective_data_available") is False:
+        return AdaptationFeedbackOutcome(
+            trajectory="insufficient_data",
+            previous_history_id=prev_id,
+            days_since_previous=days_since_previous,
+        )
+
+    prev_snap = previous_history_record.get("input_snapshot") or {}
+
+    # Extract previous baseline metrics
+    prev_rec = _safe_float(prev_snap.get("recovery_score"))
+    if prev_rec is None:
+        prev_rec = _safe_float(previous_history_record.get("recovery_score"))
+
+    prev_stress = _safe_float(prev_snap.get("stress_score"))
+    if prev_stress is None:
+        prev_stress = _safe_float(previous_history_record.get("stress_score"))
+
+    prev_soreness = _safe_float(prev_snap.get("injury_risk"))
+    if prev_soreness is None:
+        prev_soreness = _safe_float(previous_history_record.get("injury_risk"))
+
+    prev_adh = _safe_float(prev_snap.get("adherence_percent"))
+    if prev_adh is None:
+        prev_adh = _safe_float(previous_history_record.get("adherence_score"))
+
+    # Current values from current_input
+    curr_rec = current_input.recovery_score
+    curr_stress = current_input.stress_score
+    curr_soreness = current_input.injury_risk
+    curr_adh = current_input.adherence_percent
+
+    rec_delta = None
+    stress_delta = None
+    soreness_delta = None
+    adh_delta = None
+
+    evaluations: List[int] = []
+
+    # 1. Recovery (higher = better)
+    if curr_rec is not None and prev_rec is not None:
+        rec_delta = round(curr_rec - prev_rec, 2)
+        if rec_delta >= meaningful_threshold:
+            evaluations.append(1)
+        elif rec_delta <= -meaningful_threshold:
+            evaluations.append(-1)
+        else:
+            evaluations.append(0)
+
+    # 2. Stress (lower = better)
+    if curr_stress is not None and prev_stress is not None:
+        stress_delta = round(curr_stress - prev_stress, 2)
+        if stress_delta <= -meaningful_threshold:
+            evaluations.append(1)
+        elif stress_delta >= meaningful_threshold:
+            evaluations.append(-1)
+        else:
+            evaluations.append(0)
+
+    # 3. Muscle soreness / injury risk (lower = better)
+    if curr_soreness is not None and prev_soreness is not None:
+        soreness_delta = round(curr_soreness - prev_soreness, 2)
+        if soreness_delta <= -meaningful_threshold:
+            evaluations.append(1)
+        elif soreness_delta >= meaningful_threshold:
+            evaluations.append(-1)
+        else:
+            evaluations.append(0)
+
+    # 4. Adherence (higher = better)
+    if curr_adh is not None and prev_adh is not None:
+        adh_delta = round(curr_adh - prev_adh, 2)
+        if adh_delta >= meaningful_threshold:
+            evaluations.append(1)
+        elif adh_delta <= -meaningful_threshold:
+            evaluations.append(-1)
+        else:
+            evaluations.append(0)
+
+    if not evaluations:
+        return AdaptationFeedbackOutcome(
+            trajectory="insufficient_data",
+            recovery_delta=rec_delta,
+            stress_delta=stress_delta,
+            soreness_delta=soreness_delta,
+            adherence_delta=adh_delta,
+            previous_history_id=prev_id,
+            days_since_previous=days_since_previous,
+        )
+
+    improving_count = sum(1 for e in evaluations if e == 1)
+    declining_count = sum(1 for e in evaluations if e == -1)
+    meaningful_count = improving_count + declining_count
+
+    if meaningful_count == 0:
+        trajectory = "stable"
+    elif declining_count == 0 and improving_count > 0:
+        trajectory = "improving"
+    elif improving_count == 0 and declining_count > 0:
+        trajectory = "declining"
+    else:
+        # Signals are mixed (both improving and declining signals exist)
+        # Stable unless there is a clear majority (e.g. >= 2:1 ratio)
+        if improving_count >= 2 * declining_count:
+            trajectory = "improving"
+        elif declining_count >= 2 * improving_count:
+            trajectory = "declining"
+        else:
+            trajectory = "stable"
+
+    return AdaptationFeedbackOutcome(
+        trajectory=trajectory,
+        recovery_delta=rec_delta,
+        stress_delta=stress_delta,
+        soreness_delta=soreness_delta,
+        adherence_delta=adh_delta,
+        previous_history_id=prev_id,
+        days_since_previous=days_since_previous,
+    )
+
+
 def compute_adaptation_for_user(
     user_id: str,
     user_token: Optional[str] = None,
@@ -1910,7 +2318,7 @@ def compute_adaptation_for_user(
 ) -> AdaptationDecision:
     """
     Read-only pipeline: collect_adaptation_data -> ensure_target_metrics ->
-    resolve active plans -> prepare_adaptation_input -> compute_adaptation.
+    resolve active plans -> prepare_adaptation_input -> evaluate feedback -> compute_adaptation.
 
     Persists nothing. Raises ValueError for a missing profile or a profile too incomplete
     to derive targets. Repository errors propagate to the caller.
@@ -1943,4 +2351,17 @@ def compute_adaptation_for_user(
         active_meal_plan=active_meal_plan,
         active_workout_plan=active_workout_plan,
     )
-    return compute_adaptation(adaptation_input)
+
+    previous_history = None
+    try:
+        previous_history = AdaptationHistoryRepository.get_latest_history(
+            user_id=user_id, user_token=user_token
+        )
+    except Exception:
+        previous_history = None
+
+    feedback_outcome = evaluate_adaptation_feedback(
+        current_input=adaptation_input,
+        previous_history_record=previous_history,
+    )
+    return compute_adaptation(adaptation_input, feedback_outcome=feedback_outcome)

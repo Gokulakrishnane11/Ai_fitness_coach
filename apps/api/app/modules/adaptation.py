@@ -11,6 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.security import get_current_user, UserContext
 from app.engine.adaptation import (
     AdaptationDecision,
+    AdaptationReason,
+    AdaptationFeedbackOutcome,
     DietAdjustment,
     WorkoutAdjustment,
     compute_adaptation_for_user,
@@ -55,12 +57,34 @@ class AdaptationHistoryRecord(BaseModel):
     active_meal_plan_id: Optional[str] = None
     active_workout_plan_id: Optional[str] = None
     input_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    reasons: List[AdaptationReason] = Field(default_factory=list)
+    feedback_outcome: Optional[AdaptationFeedbackOutcome] = None
 
     @classmethod
     def from_db_row(cls, row: Dict[str, Any]) -> "AdaptationHistoryRecord":
         c_at = row.get("created_at")
         if isinstance(c_at, datetime):
             c_at = c_at.isoformat()
+
+        snap = dict(row.get("input_snapshot") or {})
+        raw_reasons = snap.get("reasons")
+        parsed_reasons: List[AdaptationReason] = []
+        if isinstance(raw_reasons, list):
+            for item in raw_reasons:
+                try:
+                    if isinstance(item, dict):
+                        parsed_reasons.append(AdaptationReason.model_validate(item))
+                except Exception:
+                    pass
+
+        raw_feedback = snap.get("feedback_outcome")
+        parsed_feedback: Optional[AdaptationFeedbackOutcome] = None
+        if isinstance(raw_feedback, dict):
+            try:
+                parsed_feedback = AdaptationFeedbackOutcome.model_validate(raw_feedback)
+            except Exception:
+                parsed_feedback = None
+
         return cls(
             id=str(row.get("id")),
             user_id=str(row.get("user_id")),
@@ -81,7 +105,9 @@ class AdaptationHistoryRecord(BaseModel):
             objective_data_available=bool(row.get("objective_data_available")),
             active_meal_plan_id=str(row["active_meal_plan_id"]) if row.get("active_meal_plan_id") else None,
             active_workout_plan_id=str(row["active_workout_plan_id"]) if row.get("active_workout_plan_id") else None,
-            input_snapshot=dict(row.get("input_snapshot") or {}),
+            input_snapshot=snap,
+            reasons=parsed_reasons,
+            feedback_outcome=parsed_feedback,
         )
 
 
@@ -254,6 +280,8 @@ def persist_adaptation_snapshot(
         "latest_journal_sentiment": adaptation_input.latest_journal_sentiment,
         "active_meal_plan_id": active_meal_plan_id,
         "active_workout_plan_id": active_workout_plan_id,
+        "reasons": [r.model_dump(mode="json") for r in decision.reasons],
+        "feedback_outcome": decision.feedback_outcome.model_dump(mode="json") if decision.feedback_outcome else None,
     }
 
     latest = adaptation_history_repository.get_latest_history(user_id=user_id, user_token=user_token)
@@ -331,6 +359,17 @@ def get_user_adaptation(
         pass
 
     return decision
+
+
+@router.get("/current", response_model=AdaptationDecision)
+def get_current_adaptation(
+    user_ctx: UserContext = Depends(get_current_user),
+) -> AdaptationDecision:
+    """
+    Returns the current adaptation decision and readiness state for the authenticated user.
+    Provides a semantic REST resource path for the current adaptation state.
+    """
+    return get_user_adaptation(user_ctx=user_ctx)
 
 
 @router.get("/history", response_model=AdaptationHistoryListResponse)
