@@ -4,6 +4,7 @@ raw profile + daily-log data into a validated AdaptationInput instance.
 """
 
 import copy
+from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 from app.engine.adaptation import (
@@ -11,6 +12,11 @@ from app.engine.adaptation import (
     AdaptationInput,
     compute_adaptation,
 )
+
+# Reference time anchored to the test dataset so journal entries dated
+# in September 2026 are always within the DEFAULT_JOURNAL_FRESHNESS_DAYS
+# window, regardless of when the suite is executed.
+_JOURNAL_REF_TIME = datetime(2026, 9, 30, 12, 0, 0, tzinfo=timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +235,7 @@ def test_journal_summary_reaches_adaptation_input():
         _make_journal_entry(created_at="2026-09-28", summary="Newest summary", sentiment_tag="motivated"),
     ]
 
-    result = prepare_adaptation_input(profile, logs, journals)
+    result = prepare_adaptation_input(profile, logs, journals, reference_time=_JOURNAL_REF_TIME)
 
     assert result.latest_journal_summary == "Newest summary"
 
@@ -247,7 +253,7 @@ def test_valid_sentiment_reaches_adaptation_input():
         ("Fatigued", "fatigued"),
     ]:
         journals = [_make_journal_entry(sentiment_tag=raw)]
-        result = prepare_adaptation_input(profile, logs, journals)
+        result = prepare_adaptation_input(profile, logs, journals, reference_time=_JOURNAL_REF_TIME)
         assert result.latest_journal_sentiment == expected
 
 
@@ -258,7 +264,7 @@ def test_invalid_sentiment_becomes_none():
 
     for invalid in ["stressed", "unknown", "happy", "", "   "]:
         journals = [_make_journal_entry(sentiment_tag=invalid)]
-        result = prepare_adaptation_input(profile, logs, journals)
+        result = prepare_adaptation_input(profile, logs, journals, reference_time=_JOURNAL_REF_TIME)
         assert result.latest_journal_sentiment is None
 
 
@@ -283,8 +289,8 @@ def test_existing_progress_fields_remain_unchanged():
     logs = _make_logs_with_weight_trend()
     journals = [_make_journal_entry()]
 
-    baseline = prepare_adaptation_input(profile, logs)
-    with_journals = prepare_adaptation_input(profile, logs, journals)
+    baseline = prepare_adaptation_input(profile, logs, reference_time=_JOURNAL_REF_TIME)
+    with_journals = prepare_adaptation_input(profile, logs, journals, reference_time=_JOURNAL_REF_TIME)
 
     assert with_journals.current_weight_kg == baseline.current_weight_kg
     assert with_journals.target_weight_kg == baseline.target_weight_kg
@@ -314,7 +320,7 @@ def test_inputs_remain_unmodified_including_journals():
     logs_copy = copy.deepcopy(logs)
     journals_copy = copy.deepcopy(journals)
 
-    prepare_adaptation_input(profile, logs, journals)
+    prepare_adaptation_input(profile, logs, journals, reference_time=_JOURNAL_REF_TIME)
 
     assert profile == profile_copy
     assert logs == logs_copy
