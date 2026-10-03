@@ -49,6 +49,9 @@ _OFFLINE_TEST_DB: Dict[str, Dict[str, Any]] = {
     "simulations": {},
     "journal_entries": {},
     "adaptation_history": {},
+    # Phase 5A — body analysis
+    "progress_photos": {},
+    "body_analysis_results": {},
 }
 
 
@@ -405,3 +408,206 @@ class AdaptationHistoryRepository:
         history = cls.get_history(user_id=user_id, user_token=user_token, limit=1)
         return history[0] if history else None
 
+
+class ProgressPhotoRepository:
+    """
+    Production Repository for progress_photos table.
+
+    Phase 5A — database layer only. No image bytes are stored here;
+    actual photo data lives in the private Supabase Storage bucket.
+    All writes enforce user_id ownership; all reads filter by user_id.
+    """
+
+    @staticmethod
+    def create_photo(
+        user_id: str,
+        photo_data: Dict[str, Any],
+        user_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Persists photo metadata for the authenticated user.
+
+        photo_data must include: storage_path, photo_type, captured_at.
+        Optional: file_size_bytes, width_px, height_px, mime_type.
+        user_id is always taken from the authenticated token, never from the payload.
+        """
+        record = {
+            **{k: v for k, v in photo_data.items() if k != "user_id"},
+            "user_id": user_id,
+            "is_deleted": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = client.table("progress_photos").insert(record).execute()
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            raise RuntimeError("Supabase progress_photos insert returned empty response")
+        photo_id = str(uuid.uuid4())
+        record["id"] = photo_id
+        _OFFLINE_TEST_DB["progress_photos"][photo_id] = record
+        return record
+
+    @staticmethod
+    def get_photos(
+        user_id: str,
+        user_token: Optional[str] = None,
+        include_deleted: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Returns the user's progress photo records, newest first."""
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            q = (
+                client.table("progress_photos")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("captured_at", desc=True)
+            )
+            if not include_deleted:
+                q = q.eq("is_deleted", False)
+            res = q.execute()
+            return res.data if res.data is not None else []
+        rows = [
+            dict(r)
+            for r in _OFFLINE_TEST_DB["progress_photos"].values()
+            if r.get("user_id") == user_id
+            and (include_deleted or not r.get("is_deleted", False))
+        ]
+        rows.sort(key=lambda x: str(x.get("captured_at") or ""), reverse=True)
+        return rows
+
+    @staticmethod
+    def get_photo(
+        photo_id: str,
+        user_token: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Returns a single photo record by id (RLS enforces ownership at DB level)."""
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = (
+                client.table("progress_photos")
+                .select("*")
+                .eq("id", photo_id)
+                .eq("is_deleted", False)
+                .limit(1)
+                .execute()
+            )
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            return None
+        row = _OFFLINE_TEST_DB["progress_photos"].get(photo_id)
+        if row and not row.get("is_deleted", False):
+            return dict(row)
+        return None
+
+    @staticmethod
+    def soft_delete_photo(
+        photo_id: str,
+        user_id: str,
+        user_token: Optional[str] = None,
+    ) -> bool:
+        """
+        Soft-deletes the photo row (sets is_deleted=True).
+        Returns True if a row was updated, False if nothing was found or owned by another user.
+        The API layer is responsible for also hard-deleting the storage object.
+        """
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = (
+                client.table("progress_photos")
+                .update({"is_deleted": True})
+                .eq("id", photo_id)
+                .eq("user_id", user_id)
+                .eq("is_deleted", False)
+                .execute()
+            )
+            return bool(res.data and len(res.data) > 0)
+        row = _OFFLINE_TEST_DB["progress_photos"].get(photo_id)
+        if row and row.get("user_id") == user_id and not row.get("is_deleted", False):
+            row["is_deleted"] = True
+            return True
+        return False
+
+
+class BodyAnalysisRepository:
+    """
+    Production Repository for body_analysis_results table.
+
+    Phase 5A — stores analysis output linked to a progress photo.
+    Results are OBSERVATIONAL ONLY and must not be fed into adaptation formulas.
+    """
+
+    @staticmethod
+    def create_result(
+        user_id: str,
+        photo_id: str,
+        result_data: Dict[str, Any],
+        user_token: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Persists a body analysis result for the given photo."""
+        record = {
+            **{k: v for k, v in result_data.items() if k not in ("user_id", "photo_id")},
+            "user_id": user_id,
+            "photo_id": photo_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = client.table("body_analysis_results").insert(record).execute()
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            raise RuntimeError("Supabase body_analysis_results insert returned empty response")
+        result_id = str(uuid.uuid4())
+        record["id"] = result_id
+        _OFFLINE_TEST_DB["body_analysis_results"][result_id] = record
+        return record
+
+    @staticmethod
+    def get_result_by_photo(
+        photo_id: str,
+        user_token: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Returns the analysis result for a specific photo, or None."""
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = (
+                client.table("body_analysis_results")
+                .select("*")
+                .eq("photo_id", photo_id)
+                .limit(1)
+                .execute()
+            )
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            return None
+        for row in _OFFLINE_TEST_DB["body_analysis_results"].values():
+            if row.get("photo_id") == photo_id:
+                return dict(row)
+        return None
+
+    @staticmethod
+    def get_results_by_user(
+        user_id: str,
+        user_token: Optional[str] = None,
+        limit: int = 30,
+    ) -> List[Dict[str, Any]]:
+        """Returns all analysis results for a user, newest first."""
+        clamped = max(1, min(100, int(limit)))
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = (
+                client.table("body_analysis_results")
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(clamped)
+                .execute()
+            )
+            return res.data if res.data is not None else []
+        rows = [
+            dict(r)
+            for r in _OFFLINE_TEST_DB["body_analysis_results"].values()
+            if r.get("user_id") == user_id
+        ]
+        rows.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+        return rows[:clamped]

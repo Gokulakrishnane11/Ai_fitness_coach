@@ -12,6 +12,7 @@ from app.modules.simulation import router as simulation_router
 from app.modules.progress import router as progress_router
 from app.modules.coaching import router as coaching_router
 from app.modules.adaptation import router as adaptation_router
+from app.modules.body_analysis import router as body_analysis_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -37,6 +38,7 @@ app.include_router(simulation_router, prefix=settings.API_V1_STR)
 app.include_router(progress_router, prefix=settings.API_V1_STR)
 app.include_router(coaching_router, prefix=settings.API_V1_STR)
 app.include_router(adaptation_router, prefix=settings.API_V1_STR)
+app.include_router(body_analysis_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/health", tags=["Health"])
