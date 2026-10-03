@@ -1,0 +1,17 @@
+# FastAPI & Server
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.0.0
+python-multipart>=0.0.12
+
+# Database & Supabase
+supabase>=2.0.0
+
+# Image Processing & Computer Vision (Phase 5B)
+pillow>=12.0.0
+opencv-python-headless>=5.0.0.93
+mediapipe>=1.0.1
+
+# Testing
+pytest>=8.0.0
+httpx>=0.27.0

@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import BaseModel, Field
 
 from app.core.security import get_current_user, UserContext
+from app.engine.body_analysis import analyze_body_photo
 from app.db.supabase import (
     ProgressPhotoRepository,
     BodyAnalysisRepository,
@@ -398,7 +399,7 @@ async def upload_progress_photo(
         user_token=user_ctx.access_token,
     )
 
-    # --- 9. Create placeholder analysis record (Phase 5A = pending; Phase 5B will fill it) ---
+    # --- 9. Create placeholder analysis record (status=pending) ---
     analysis_record = BodyAnalysisRepository.create_result(
         user_id=user_ctx.user_id,
         photo_id=photo_record["id"],
@@ -410,9 +411,38 @@ async def upload_progress_photo(
         user_token=user_ctx.access_token,
     )
 
+    # --- 10. Run MediaPipe Body Analysis Engine synchronously ---
+    analysis_result = analyze_body_photo(clean_bytes)
+
+    # --- 11. Persist analysis result (status becomes completed or failed) ---
+    updated_analysis = BodyAnalysisRepository.update_result(
+        result_id=analysis_record["id"],
+        user_id=user_ctx.user_id,
+        update_data={
+            "analysis_version": analysis_result.analysis_version,
+            "status": analysis_result.status,
+            "pose_detected": analysis_result.pose_detected,
+            "pose_confidence": analysis_result.pose_confidence,
+            "landmarks_visible": analysis_result.landmarks_visible,
+            "pose_quality": analysis_result.pose_quality,
+            "shoulder_tilt_deg": analysis_result.shoulder_tilt_deg,
+            "hip_tilt_deg": analysis_result.hip_tilt_deg,
+            "symmetry_score": analysis_result.symmetry_score,
+            "torso_to_leg_ratio": analysis_result.torso_to_leg_ratio,
+            "shoulder_to_hip_ratio": analysis_result.shoulder_to_hip_ratio,
+            "raw_landmarks": analysis_result.raw_landmarks,
+            "processing_ms": analysis_result.processing_ms,
+            "error_message": analysis_result.error_message,
+            "disclaimer_accepted": True,
+        },
+        user_token=user_ctx.access_token,
+    )
+
+    final_analysis = updated_analysis if updated_analysis is not None else analysis_record
+
     return PhotoDetailResponse(
-        photo=_build_photo_response(photo_record, analysis_record),
-        analysis=_build_analysis_response(analysis_record),
+        photo=_build_photo_response(photo_record, final_analysis),
+        analysis=_build_analysis_response(final_analysis),
     )
 
 

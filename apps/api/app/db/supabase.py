@@ -563,6 +563,33 @@ class BodyAnalysisRepository:
         return record
 
     @staticmethod
+    def update_result(
+        result_id: str,
+        user_id: str,
+        update_data: Dict[str, Any],
+        user_token: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Updates an existing body analysis result record."""
+        clean_update = {k: v for k, v in update_data.items() if k not in ("id", "user_id", "photo_id", "created_at")}
+        client = get_authenticated_supabase_client(user_token)
+        if client:
+            res = (
+                client.table("body_analysis_results")
+                .update(clean_update)
+                .eq("id", result_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+            return None
+        row = _OFFLINE_TEST_DB["body_analysis_results"].get(result_id)
+        if row and row.get("user_id") == user_id:
+            row.update(clean_update)
+            return dict(row)
+        return None
+
+    @staticmethod
     def get_result_by_photo(
         photo_id: str,
         user_token: Optional[str] = None,

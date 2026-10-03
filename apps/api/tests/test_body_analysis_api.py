@@ -43,6 +43,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("TESTING", "true")
 
 from app.main import app
+from app.engine.body_analysis import set_pose_analyzer
 from app.db.supabase import (
     _OFFLINE_TEST_DB,
     ProgressPhotoRepository,
@@ -155,12 +156,14 @@ def _upload_photo(token_header: dict, photo_bytes: bytes = None, photo_type: str
 
 @pytest.fixture(autouse=True)
 def _clear_offline_db():
-    """Isolate each test by clearing Phase 5A offline tables."""
+    """Isolate each test by clearing Phase 5A/5B offline tables and resetting mock analyzer."""
     _OFFLINE_TEST_DB["progress_photos"].clear()
     _OFFLINE_TEST_DB["body_analysis_results"].clear()
+    set_pose_analyzer(None)
     yield
     _OFFLINE_TEST_DB["progress_photos"].clear()
     _OFFLINE_TEST_DB["body_analysis_results"].clear()
+    set_pose_analyzer(None)
 
 
 # ---------------------------------------------------------------------------
@@ -332,13 +335,15 @@ class TestMetadataPersistence:
         assert ".." not in record["storage_path"]
 
     def test_analysis_placeholder_created(self):
-        """A body_analysis_results row with status=pending is created on upload."""
+        """A body_analysis_results row is created and populated on upload."""
         resp = _upload_photo(AUTH_A)
         assert resp.status_code == 201
         data = resp.json()
         assert data["analysis"] is not None
-        assert data["analysis"]["status"] == "pending"
+        assert data["analysis"]["status"] in ("completed", "failed")
         assert data["analysis"]["analysis_version"] == "v1"
+        assert data["analysis"]["processing_ms"] is not None
+        assert data["analysis"]["processing_ms"] >= 0
         assert data["analysis"]["disclaimer"]
 
     def test_disclaimer_always_present_in_upload(self):
@@ -720,10 +725,58 @@ class TestAnalysisVersionAndDisclaimer:
         assert resp.status_code == 201
         assert resp.json()["analysis"]["analysis_version"] == "v1"
 
-    def test_analysis_status_pending_on_upload(self):
+    def test_analysis_failed_status_on_non_pose_upload(self):
+        """Uploading an image with no recognizable human pose results in status='failed'."""
         resp = _upload_photo(AUTH_A)
         assert resp.status_code == 201
-        assert resp.json()["analysis"]["status"] == "pending"
+        analysis = resp.json()["analysis"]
+        assert analysis["status"] == "failed"
+        assert analysis["pose_detected"] is False
+        assert analysis["error_message"] is not None
+        assert analysis["processing_ms"] is not None
+        assert analysis["processing_ms"] >= 0
+
+    def test_analysis_completed_status_when_pose_detected(self):
+        """Uploading an image when pose is detected results in status='completed'."""
+        from app.engine.body_analysis import (
+            LEFT_SHOULDER, RIGHT_SHOULDER, LEFT_HIP, RIGHT_HIP,
+            LEFT_KNEE, RIGHT_KNEE, LEFT_ANKLE, RIGHT_ANKLE,
+        )
+        landmarks = [{"index": i, "x": 0.5, "y": 0.5, "z": 0.0, "visibility": 0.9} for i in range(33)]
+        landmarks[LEFT_SHOULDER] = {"index": LEFT_SHOULDER, "x": 0.35, "y": 0.25, "z": 0.0, "visibility": 0.95}
+        landmarks[RIGHT_SHOULDER] = {"index": RIGHT_SHOULDER, "x": 0.65, "y": 0.25, "z": 0.0, "visibility": 0.95}
+        landmarks[LEFT_HIP] = {"index": LEFT_HIP, "x": 0.40, "y": 0.55, "z": 0.0, "visibility": 0.95}
+        landmarks[RIGHT_HIP] = {"index": RIGHT_HIP, "x": 0.60, "y": 0.55, "z": 0.0, "visibility": 0.95}
+        landmarks[LEFT_KNEE] = {"index": LEFT_KNEE, "x": 0.40, "y": 0.75, "z": 0.0, "visibility": 0.95}
+        landmarks[RIGHT_KNEE] = {"index": RIGHT_KNEE, "x": 0.60, "y": 0.75, "z": 0.0, "visibility": 0.95}
+        landmarks[LEFT_ANKLE] = {"index": LEFT_ANKLE, "x": 0.40, "y": 0.95, "z": 0.0, "visibility": 0.95}
+        landmarks[RIGHT_ANKLE] = {"index": RIGHT_ANKLE, "x": 0.60, "y": 0.95, "z": 0.0, "visibility": 0.95}
+
+        class _MockAnalyzer:
+            def analyze_rgb(self, _):
+                return landmarks
+
+        set_pose_analyzer(_MockAnalyzer())
+        try:
+            resp = _upload_photo(AUTH_A)
+            assert resp.status_code == 201
+            analysis = resp.json()["analysis"]
+            assert analysis["status"] == "completed"
+            assert analysis["pose_detected"] is True
+            assert analysis["pose_quality"] == "good"
+            assert analysis["shoulder_tilt_deg"] == 0.0
+            assert analysis["hip_tilt_deg"] == 0.0
+            assert analysis["symmetry_score"] == 1.0
+            assert analysis["processing_ms"] is not None
+            assert analysis["processing_ms"] >= 0
+        finally:
+            set_pose_analyzer(None)
+
+    def test_processing_ms_always_recorded(self):
+        resp = _upload_photo(AUTH_A)
+        assert resp.status_code == 201
+        assert resp.json()["analysis"]["processing_ms"] is not None
+        assert resp.json()["analysis"]["processing_ms"] >= 0
 
     def test_disclaimer_non_empty_string(self):
         resp = _upload_photo(AUTH_A)
