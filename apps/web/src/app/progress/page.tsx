@@ -216,35 +216,51 @@ export default function ProgressPage() {
   const isExistingDate = logs.some((l) => l.log_date === formData.log_date);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-10 py-6 px-4">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-3">
-            <TrendingUp className="w-8 h-8 text-cyan-400" />
-            <span className="gradient-text-cyan">Daily Progress Tracker</span>
-          </h1>
-          <p className="text-sm text-gray-400 mt-1">
-            Log weight, nutrition, hydration, and training consistency. Updates automatically upsert by date.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-lg bg-cyan-950/60 border border-cyan-500/30 text-cyan-300">
-          <Target className="w-4 h-4 text-cyan-400" />
-          <span>{logs.length} Logged {logs.length === 1 ? "Day" : "Days"}</span>
+    <div className="max-w-6xl mx-auto space-y-8 py-2">
+      {/* Page Header / Hero Banner */}
+      <div className="glass-card p-6 sm:p-8 border border-slate-800/80 relative overflow-hidden">
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-72 h-72 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-cyan-950/60 border border-cyan-500/30 text-cyan-300">
+                <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                Telemetry Logging
+              </span>
+            </div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+              <TrendingUp className="w-8 h-8 text-cyan-400" />
+              <span className="gradient-text-cyan">Daily Progress Tracker</span>
+            </h1>
+            <p className="text-sm text-gray-400 mt-1 max-w-2xl">
+              Log daily weight, nutrition, hydration, and training telemetry. Updates automatically upsert by date into your physiological dataset.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-mono px-3.5 py-2 rounded-xl bg-slate-900/80 border border-slate-800 text-cyan-300 shadow-sm shrink-0">
+            <Target className="w-4 h-4 text-cyan-400" />
+            <span className="font-semibold">{logs.length} Logged {logs.length === 1 ? "Day" : "Days"}</span>
+          </div>
         </div>
       </div>
 
       {/* Progress Submission Form */}
-      <div className="glass-card p-6 md:p-8 space-y-6 border border-gray-800">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-800 pb-4">
-          <div className="flex items-center gap-2">
-            <PlusCircle className="w-5 h-5 text-cyan-400" />
-            <h2 className="text-lg font-bold text-gray-100">
-              {isExistingDate ? "Update Log for Selected Date" : "Log Today's Progress"}
-            </h2>
+      <div className="glass-card p-6 md:p-8 space-y-6 border border-slate-800/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-800/80 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              <PlusCircle className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-100">
+                {isExistingDate ? "Update Log for Selected Date" : "Log Today's Progress"}
+              </h2>
+              <p className="text-xs text-gray-400">Submit objective metrics and subjective wellness scores</p>
+            </div>
           </div>
           {isExistingDate && (
-            <span className="text-xs font-mono px-2.5 py-1 rounded bg-amber-950/60 border border-amber-500/40 text-amber-300">
+            <span className="text-xs font-mono px-3 py-1 rounded-lg bg-amber-950/60 border border-amber-500/40 text-amber-300 self-start sm:self-auto">
               Existing date selected (will update record)
             </span>
           )}
@@ -275,7 +291,7 @@ export default function ProgressPage() {
                 type="date"
                 value={formData.log_date}
                 onChange={(e) => handleDateChange(e.target.value)}
-                className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-200 focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
                 required
               />
             </div>
@@ -292,7 +308,7 @@ export default function ProgressPage() {
                 placeholder="e.g. 78.5"
                 value={formData.weight_kg}
                 onChange={(e) => setFormData({ ...formData, weight_kg: e.target.value })}
-                className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-200 focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
               />
             </div>
           </div>
@@ -313,7 +329,7 @@ export default function ProgressPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, calories_consumed: e.target.value })
                 }
-                className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-200 focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
               />
             </div>
             <div>
@@ -330,7 +346,7 @@ export default function ProgressPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, protein_consumed_g: e.target.value })
                 }
-                className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-200 focus:border-emerald-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-emerald-500/80 focus:ring-1 focus:ring-emerald-500/30 focus:outline-none transition"
               />
             </div>
             <div>
@@ -347,7 +363,7 @@ export default function ProgressPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, carbs_consumed_g: e.target.value })
                 }
-                className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-200 focus:border-purple-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-purple-500/80 focus:ring-1 focus:ring-purple-500/30 focus:outline-none transition"
               />
             </div>
             <div>
@@ -364,7 +380,7 @@ export default function ProgressPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, fat_consumed_g: e.target.value })
                 }
-                className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-200 focus:border-amber-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-amber-500/80 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition"
               />
             </div>
           </div>
@@ -386,7 +402,7 @@ export default function ProgressPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, water_liters: e.target.value })
                 }
-                className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-200 focus:border-blue-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-blue-500/80 focus:ring-1 focus:ring-blue-500/30 focus:outline-none transition"
               />
             </div>
             <div>
@@ -398,7 +414,7 @@ export default function ProgressPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, energy_rating: e.target.value })
                 }
-                className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-200 focus:border-yellow-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-yellow-500/80 focus:ring-1 focus:ring-yellow-500/30 focus:outline-none transition"
               >
                 <option value="">Select energy rating</option>
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((val) => (
@@ -412,14 +428,14 @@ export default function ProgressPage() {
               <span className="text-xs font-semibold text-gray-300 flex items-center gap-1.5 mb-2">
                 <Dumbbell className="w-3.5 h-3.5 text-emerald-400" /> Workout Completed
               </span>
-              <label className="flex items-center gap-3 p-3 rounded-xl bg-gray-900 border border-gray-800 cursor-pointer hover:border-gray-700 transition">
+              <label className="flex items-center gap-3 p-3 rounded-xl bg-[#0c1322] border border-white/10 cursor-pointer hover:border-cyan-500/30 transition">
                 <input
                   type="checkbox"
                   checked={formData.workout_completed}
                   onChange={(e) =>
                     setFormData({ ...formData, workout_completed: e.target.checked })
                   }
-                  className="w-4 h-4 text-cyan-600 rounded bg-gray-800 border-gray-700 focus:ring-cyan-500"
+                  className="w-4 h-4 text-cyan-600 rounded bg-slate-900 border-slate-700 focus:ring-cyan-500"
                 />
                 <span className="text-sm font-medium text-gray-300">
                   {formData.workout_completed ? "Workout Finished Today" : "Rest / Off Day"}
@@ -429,13 +445,13 @@ export default function ProgressPage() {
           </div>
 
           {/* Row 4: Daily Wellness Telemetry (Optional) */}
-          <div className="space-y-4 pt-4 border-t border-gray-800">
+          <div className="space-y-4 pt-4 border-t border-gray-800/80">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
               <div>
                 <h3 className="text-sm font-bold text-gray-200 flex items-center gap-2">
                   <Activity className="w-4 h-4 text-cyan-400" />
                   Daily Wellness Telemetry
-                  <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+                  <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
                     Optional
                   </span>
                 </h3>
@@ -447,14 +463,14 @@ export default function ProgressPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Recovery */}
-              <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-2.5">
+              <div className="p-4 rounded-xl bg-[#0c1322]/80 border border-white/5 hover:border-white/10 transition-colors space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label htmlFor="recovery-score-slider" className="text-xs font-semibold text-gray-200 flex items-center gap-1.5 cursor-pointer">
                     <Activity className="w-3.5 h-3.5 text-emerald-400" />
                     Recovery
                   </label>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold text-emerald-400">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
                       {formData.recovery_score !== "" ? `${formData.recovery_score} / 100` : "Not set"}
                     </span>
                     {formData.recovery_score !== "" && (
@@ -481,7 +497,7 @@ export default function ProgressPage() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={formData.recovery_score === "" ? undefined : parseInt(formData.recovery_score, 10)}
-                  className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-400"
                 />
                 <div className="flex justify-between text-[10px] text-gray-500 font-medium">
                   <span>0 = Very poor recovery</span>
@@ -490,14 +506,14 @@ export default function ProgressPage() {
               </div>
 
               {/* Sleep Quality */}
-              <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-2.5">
+              <div className="p-4 rounded-xl bg-[#0c1322]/80 border border-white/5 hover:border-white/10 transition-colors space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label htmlFor="sleep-quality-slider" className="text-xs font-semibold text-gray-200 flex items-center gap-1.5 cursor-pointer">
                     <Moon className="w-3.5 h-3.5 text-blue-400" />
                     Sleep Quality
                   </label>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold text-blue-400">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-950/60 text-blue-400 border border-blue-800/40">
                       {formData.sleep_quality !== "" ? `${formData.sleep_quality} / 100` : "Not set"}
                     </span>
                     {formData.sleep_quality !== "" && (
@@ -524,7 +540,7 @@ export default function ProgressPage() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={formData.sleep_quality === "" ? undefined : parseInt(formData.sleep_quality, 10)}
-                  className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-blue-400"
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-400"
                 />
                 <div className="flex justify-between text-[10px] text-gray-500 font-medium">
                   <span>0 = Very poor sleep</span>
@@ -533,14 +549,14 @@ export default function ProgressPage() {
               </div>
 
               {/* Stress Level */}
-              <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-2.5">
+              <div className="p-4 rounded-xl bg-[#0c1322]/80 border border-white/5 hover:border-white/10 transition-colors space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label htmlFor="stress-level-slider" className="text-xs font-semibold text-gray-200 flex items-center gap-1.5 cursor-pointer">
                     <HeartPulse className="w-3.5 h-3.5 text-purple-400" />
                     Stress Level
                   </label>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold text-purple-400">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-950/60 text-purple-400 border border-purple-800/40">
                       {formData.stress_level !== "" ? `${formData.stress_level} / 100` : "Not set"}
                     </span>
                     {formData.stress_level !== "" && (
@@ -567,7 +583,7 @@ export default function ProgressPage() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={formData.stress_level === "" ? undefined : parseInt(formData.stress_level, 10)}
-                  className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-purple-400"
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-400"
                 />
                 <div className="flex justify-between text-[10px] text-gray-500 font-medium">
                   <span>0 = No stress</span>
@@ -576,14 +592,14 @@ export default function ProgressPage() {
               </div>
 
               {/* Muscle Soreness */}
-              <div className="p-4 rounded-xl bg-gray-900/80 border border-gray-800 space-y-2.5">
+              <div className="p-4 rounded-xl bg-[#0c1322]/80 border border-white/5 hover:border-white/10 transition-colors space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label htmlFor="muscle-soreness-slider" className="text-xs font-semibold text-gray-200 flex items-center gap-1.5 cursor-pointer">
                     <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
                     Muscle Soreness
                   </label>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono font-bold text-amber-400">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-950/60 text-amber-400 border border-amber-800/40">
                       {formData.muscle_soreness !== "" ? `${formData.muscle_soreness} / 100` : "Not set"}
                     </span>
                     {formData.muscle_soreness !== "" && (
@@ -610,7 +626,7 @@ export default function ProgressPage() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={formData.muscle_soreness === "" ? undefined : parseInt(formData.muscle_soreness, 10)}
-                  className="w-full h-1.5 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
                 />
                 <div className="flex justify-between text-[10px] text-gray-500 font-medium">
                   <span>0 = No soreness</span>
@@ -632,7 +648,7 @@ export default function ProgressPage() {
               placeholder="e.g. Great session today. Felt strong on bench press. Drank extra water post-workout."
               value={formData.notes}
               onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full p-3 rounded-xl bg-gray-900 border border-gray-800 text-sm text-gray-200 focus:border-cyan-500 focus:outline-none resize-none"
+              className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition resize-none"
             />
           </div>
 
@@ -649,25 +665,31 @@ export default function ProgressPage() {
       </div>
 
       {/* Historical Daily Logs Section */}
-      <div className="glass-card p-6 md:p-8 space-y-6 border border-gray-800">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-gray-800 pb-4">
-          <div className="flex items-center gap-2">
-            <Clock className="w-5 h-5 text-cyan-400" />
-            <h2 className="text-lg font-bold text-gray-100">Progress History</h2>
+      <div className="glass-card p-6 md:p-8 space-y-6 border border-slate-800/80">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-gray-800/80 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              <Clock className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-100">Progress History</h2>
+              <p className="text-xs text-gray-400">Chronological telemetry audit log</p>
+            </div>
           </div>
           <button
             onClick={loadLogs}
             disabled={loadingLogs}
-            className="flex items-center gap-2 text-xs font-medium text-gray-400 hover:text-cyan-400 transition disabled:opacity-50"
+            className="flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-gray-300 hover:text-cyan-400 hover:border-cyan-500/30 transition disabled:opacity-50"
           >
             <RotateCcw className={`w-3.5 h-3.5 ${loadingLogs ? "animate-spin" : ""}`} />
-            <span>Refresh</span>
+            <span>Refresh History</span>
           </button>
         </div>
 
         {loadingLogs ? (
-          <div className="py-12 text-center text-gray-400 text-sm">
-            Loading daily progress history...
+          <div className="py-12 text-center text-gray-400 text-sm flex items-center justify-center gap-2">
+            <span className="animate-spin inline-block w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full" />
+            <span>Loading daily progress history...</span>
           </div>
         ) : logsError ? (
           <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-sm flex items-center justify-between gap-4">
@@ -683,47 +705,47 @@ export default function ProgressPage() {
             </button>
           </div>
         ) : logs.length === 0 ? (
-          <div className="py-12 text-center text-gray-400 space-y-2">
-            <Calendar className="w-8 h-8 mx-auto text-gray-600" />
-            <p className="text-sm">No progress logs recorded yet.</p>
-            <p className="text-xs text-gray-500">
-              Submit your first daily log above to start tracking your physique metrics!
+          <div className="py-12 text-center text-gray-400 space-y-3 border border-dashed border-gray-800 rounded-2xl">
+            <Calendar className="w-10 h-10 mx-auto text-gray-600" />
+            <p className="text-sm font-medium">No progress logs recorded yet.</p>
+            <p className="text-xs text-gray-500 max-w-sm mx-auto">
+              Submit your first daily log above to start tracking your physique metrics and training consistency!
             </p>
           </div>
         ) : (
           <div className="space-y-4">
             {/* Desktop Table */}
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-800/80">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="border-b border-gray-800 text-xs uppercase tracking-wider text-gray-400">
-                    <th className="py-3 px-3">Date</th>
-                    <th className="py-3 px-3">Weight</th>
-                    <th className="py-3 px-3">Calories</th>
-                    <th className="py-3 px-3">Macros (P / C / F)</th>
-                    <th className="py-3 px-3">Water</th>
-                    <th className="py-3 px-3">Workout</th>
-                    <th className="py-3 px-3">Energy</th>
-                    <th className="py-3 px-3">Wellness</th>
-                    <th className="py-3 px-3">Notes</th>
+                  <tr className="bg-slate-900/90 border-b border-gray-800/80 text-[11px] uppercase tracking-wider text-gray-400 font-semibold">
+                    <th className="py-3 px-3.5">Date</th>
+                    <th className="py-3 px-3.5">Weight</th>
+                    <th className="py-3 px-3.5">Calories</th>
+                    <th className="py-3 px-3.5">Macros (P / C / F)</th>
+                    <th className="py-3 px-3.5">Water</th>
+                    <th className="py-3 px-3.5">Workout</th>
+                    <th className="py-3 px-3.5">Energy</th>
+                    <th className="py-3 px-3.5">Wellness</th>
+                    <th className="py-3 px-3.5">Notes</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-800/60">
+                <tbody className="divide-y divide-gray-800/60 bg-slate-950/40">
                   {logs.map((log) => (
                     <tr
                       key={log.id}
-                      className="hover:bg-gray-900/50 transition-colors"
+                      className="hover:bg-cyan-500/5 transition-colors"
                     >
-                      <td className="py-3.5 px-3 font-mono font-medium text-cyan-300">
+                      <td className="py-3.5 px-3.5 font-mono font-medium text-cyan-300">
                         {log.log_date}
                       </td>
-                      <td className="py-3.5 px-3 font-semibold text-gray-100">
+                      <td className="py-3.5 px-3.5 font-semibold text-gray-100">
                         {log.weight_kg !== null ? `${log.weight_kg} kg` : "—"}
                       </td>
-                      <td className="py-3.5 px-3 font-semibold text-gray-200">
+                      <td className="py-3.5 px-3.5 font-semibold text-gray-200">
                         {log.calories_consumed !== null ? `${log.calories_consumed} kcal` : "—"}
                       </td>
-                      <td className="py-3.5 px-3 text-xs font-mono">
+                      <td className="py-3.5 px-3.5 text-xs font-mono">
                         {log.protein_consumed_g !== null ||
                         log.carbs_consumed_g !== null ||
                         log.fat_consumed_g !== null ? (
@@ -744,10 +766,10 @@ export default function ProgressPage() {
                           <span className="text-gray-500">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-3 text-blue-300 font-medium">
+                      <td className="py-3.5 px-3.5 text-blue-300 font-medium">
                         {log.water_liters !== null ? `${log.water_liters} L` : "—"}
                       </td>
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3.5">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
                             log.workout_completed
@@ -758,16 +780,16 @@ export default function ProgressPage() {
                           {log.workout_completed ? "Completed" : "Rest Day"}
                         </span>
                       </td>
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3.5">
                         {log.energy_rating !== null ? (
-                          <span className="font-mono text-yellow-300">
+                          <span className="font-mono text-yellow-300 font-medium">
                             {log.energy_rating} / 10
                           </span>
                         ) : (
                           <span className="text-gray-500">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-3 text-xs font-mono">
+                      <td className="py-3.5 px-3.5 text-xs font-mono">
                         {(log.recovery_score !== null && log.recovery_score !== undefined) ||
                         (log.sleep_quality !== null && log.sleep_quality !== undefined) ||
                         (log.stress_level !== null && log.stress_level !== undefined) ||
@@ -798,7 +820,7 @@ export default function ProgressPage() {
                           <span className="text-gray-500">—</span>
                         )}
                       </td>
-                      <td className="py-3.5 px-3 text-xs text-gray-400 max-w-xs truncate" title={log.notes || ""}>
+                      <td className="py-3.5 px-3.5 text-xs text-gray-400 max-w-xs truncate" title={log.notes || ""}>
                         {log.notes || "—"}
                       </td>
                     </tr>
@@ -812,7 +834,7 @@ export default function ProgressPage() {
               {logs.map((log) => (
                 <div
                   key={log.id}
-                  className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 space-y-3"
+                  className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 space-y-3 shadow-sm"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-sm font-bold text-cyan-300">
@@ -859,7 +881,7 @@ export default function ProgressPage() {
                   {(log.protein_consumed_g !== null ||
                     log.carbs_consumed_g !== null ||
                     log.fat_consumed_g !== null) && (
-                    <div className="text-xs font-mono pt-1 border-t border-gray-800/80 flex items-center justify-between">
+                    <div className="text-xs font-mono pt-2 border-t border-gray-800/80 flex items-center justify-between">
                       <span className="text-emerald-400">P: {log.protein_consumed_g ?? 0}g</span>
                       <span className="text-purple-400">C: {log.carbs_consumed_g ?? 0}g</span>
                       <span className="text-amber-400">F: {log.fat_consumed_g ?? 0}g</span>
@@ -870,8 +892,8 @@ export default function ProgressPage() {
                     log.sleep_quality != null ||
                     log.stress_level != null ||
                     log.muscle_soreness != null) && (
-                    <div className="text-xs font-mono pt-1 border-t border-gray-800/80 flex flex-wrap gap-1.5 items-center">
-                      <span className="text-[10px] text-gray-500 uppercase">Wellness:</span>
+                    <div className="text-xs font-mono pt-2 border-t border-gray-800/80 flex flex-wrap gap-1.5 items-center">
+                      <span className="text-[10px] text-gray-500 uppercase font-semibold">Wellness:</span>
                       {log.recovery_score != null && <span className="text-emerald-400">Rec {log.recovery_score}</span>}
                       {log.sleep_quality != null && <span className="text-blue-400">Sleep {log.sleep_quality}</span>}
                       {log.stress_level != null && <span className="text-purple-400">Stress {log.stress_level}</span>}
@@ -880,7 +902,7 @@ export default function ProgressPage() {
                   )}
 
                   {log.notes && (
-                    <div className="text-xs text-gray-400 bg-gray-950/40 p-2 rounded-lg border border-gray-800/60 italic">
+                    <div className="text-xs text-gray-400 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 italic">
                       "{log.notes}"
                     </div>
                   )}

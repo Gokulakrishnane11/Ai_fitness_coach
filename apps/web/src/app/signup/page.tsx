@@ -105,7 +105,7 @@ export default function SignupPage() {
           </div>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="glass-card p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="glass-card p-6 sm:p-8 space-y-5 border border-slate-800/80">
           {errorMessage && (
             <div className="p-3.5 rounded-xl bg-red-950/60 border border-red-500/40 text-red-300 text-sm flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
@@ -122,7 +122,7 @@ export default function SignupPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
-              className="w-full p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none transition"
+              className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
               required
             />
           </div>
@@ -136,7 +136,7 @@ export default function SignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="At least 6 characters"
-              className="w-full p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none transition"
+              className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
               required
             />
           </div>
@@ -150,7 +150,7 @@ export default function SignupPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="Re-enter your password"
-              className="w-full p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none transition"
+              className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 placeholder:text-gray-500 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
               required
             />
           </div>
@@ -158,10 +158,19 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold flex items-center justify-center gap-2 glow-btn transition disabled:opacity-50"
+            className="w-full py-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold flex items-center justify-center gap-2 glow-btn transition disabled:opacity-50"
           >
-            <UserPlus className="w-4 h-4" />
-            {loading ? "Creating Account..." : "Create Account"}
+            {loading ? (
+              <>
+                <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                <span>Creating Account...</span>
+              </>
+            ) : (
+              <>
+                <UserPlus className="w-4 h-4" />
+                <span>Create Account</span>
+              </>
+            )}
           </button>
 
           <div className="text-center pt-2 text-xs text-gray-400">

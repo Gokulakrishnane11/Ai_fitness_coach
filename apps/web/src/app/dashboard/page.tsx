@@ -210,7 +210,55 @@ export default function DashboardPage() {
   }, [authLoading, user, router, fetchAdaptation]);
 
   if (authLoading || loading) {
-    return <div className="py-20 text-center text-gray-400">Loading physiological dashboard...</div>;
+    return (
+      <div className="space-y-8 py-2 animate-pulse">
+        {/* Skeleton Hero Banner */}
+        <div className="glass-card p-6 sm:p-8 space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between gap-4">
+            <div className="space-y-2.5">
+              <div className="h-4 w-36 rounded-full bg-gray-800" />
+              <div className="h-8 w-64 rounded bg-gray-800" />
+              <div className="h-4 w-80 rounded bg-gray-800/70" />
+            </div>
+            <div className="h-16 w-52 rounded-2xl bg-gray-800/80" />
+          </div>
+        </div>
+
+        {/* Skeleton Stat Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="glass-card p-5 space-y-3">
+              <div className="flex justify-between">
+                <div className="h-3 w-20 rounded bg-gray-800" />
+                <div className="h-7 w-7 rounded-xl bg-gray-800" />
+              </div>
+              <div className="h-8 w-32 rounded bg-gray-800" />
+              <div className="h-3 w-40 rounded bg-gray-800/60" />
+            </div>
+          ))}
+        </div>
+
+        {/* Skeleton Strategy Card */}
+        <div className="glass-card p-6 space-y-4">
+          <div className="h-5 w-48 rounded bg-gray-800" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="h-20 rounded-xl bg-gray-800/50" />
+            <div className="h-20 rounded-xl bg-gray-800/50" />
+            <div className="h-20 rounded-xl bg-gray-800/50" />
+          </div>
+        </div>
+
+        {/* Skeleton Planning Card */}
+        <div className="glass-card p-6 space-y-4">
+          <div className="h-6 w-56 rounded bg-gray-800" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-44 rounded-xl bg-gray-800/40" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!user) {
@@ -225,12 +273,12 @@ export default function DashboardPage() {
             <AlertTriangle className="w-6 h-6 flex-shrink-0" />
             <h2 className="text-lg font-bold">Dashboard Error</h2>
           </div>
-          <p className="text-sm text-gray-300">{error}</p>
+          <p className="text-sm text-gray-300 leading-relaxed">{error}</p>
           <button
             onClick={() => window.location.reload()}
-            className="w-full py-2 px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors text-sm"
+            className="w-full py-2.5 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors text-sm shadow-sm"
           >
-            Retry
+            Retry Connection
           </button>
         </div>
       </div>
@@ -242,79 +290,186 @@ export default function DashboardPage() {
   }
 
   const m = profile.target_metrics;
+  const weightDelta = profile.target_weight_kg - profile.weight_kg;
 
   return (
-    <div className="space-y-8 py-4">
-      {/* Welcome Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            Welcome Back, <span className="gradient-text-cyan">{profile.first_name}</span>
-          </h1>
-          <p className="text-sm text-gray-400">
-            Goal: <span className="text-cyan-400 capitalize font-medium">{profile.goal_type.replace("_", " ")}</span> ({profile.weight_kg}kg → {profile.target_weight_kg}kg)
-          </p>
-        </div>
-        <div className="flex items-center gap-2 text-xs font-mono px-3 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/30 text-emerald-300">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Physics Engine Active</span>
+    <div className="space-y-8 py-2">
+      {/* Hero / Welcome Banner */}
+      <div className="glass-card p-6 sm:p-8 border border-slate-800/80 relative overflow-hidden">
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-72 h-72 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 relative z-10">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-emerald-950/60 border border-emerald-500/30 text-emerald-300">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Thermodynamic Engine Active
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-slate-800/80 border border-slate-700 text-slate-300">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                Mifflin-St Jeor Calibrated
+              </span>
+            </div>
+
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
+              Welcome Back, <span className="gradient-text-cyan">{profile.first_name}</span>
+            </h1>
+
+            <p className="text-sm text-gray-400 max-w-2xl leading-relaxed">
+              Targeting calibrated <span className="text-cyan-300 font-semibold capitalize">{profile.goal_type.replace("_", " ")}</span> with deterministic nutrition portions and dynamic volume adaptation.
+            </p>
+          </div>
+
+          {/* Goal & Weight Target Widget */}
+          <div className="flex items-center gap-4 p-4 rounded-2xl bg-slate-900/80 border border-slate-800/90 shadow-sm shrink-0">
+            <div className="text-left space-y-0.5">
+              <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold block">Current</span>
+              <span className="text-xl font-bold font-mono text-white">
+                {profile.weight_kg} <span className="text-xs text-gray-400 font-normal">kg</span>
+              </span>
+            </div>
+
+            <div className="flex flex-col items-center justify-center px-1 text-gray-500">
+              <span className="text-[10px] font-mono font-medium text-cyan-300 bg-cyan-950/70 px-2 py-0.5 rounded-full border border-cyan-800/40">
+                {weightDelta > 0 ? `+${weightDelta.toFixed(1)}` : weightDelta.toFixed(1)} kg
+              </span>
+              <span className="text-xs leading-none mt-0.5">→</span>
+            </div>
+
+            <div className="text-left space-y-0.5">
+              <span className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold block">Target</span>
+              <span className="text-xl font-bold font-mono text-emerald-400">
+                {profile.target_weight_kg} <span className="text-xs text-gray-400 font-normal">kg</span>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Target Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-cyan-500">
-          <div className="flex items-center justify-between text-gray-400">
-            <span className="text-xs font-medium uppercase tracking-wider">Target Calories</span>
-            <Flame className="w-4 h-4 text-cyan-400" />
+      {/* Target Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        {/* Calories Card */}
+        <div className="glass-card p-5 space-y-3 border-l-4 border-l-cyan-500 relative overflow-hidden group hover:border-cyan-500/40 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Target Calories</span>
+            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              <Flame className="w-4 h-4" />
+            </div>
           </div>
-          <p className="text-3xl font-bold text-cyan-400">{m?.target_calories} <span className="text-sm text-gray-400 font-normal">kcal/day</span></p>
-          <p className="text-xs text-gray-500">TDEE: {m?.tdee} kcal (BMR: {m?.bmr})</p>
+          <div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-extrabold tracking-tight text-white">
+                {m?.target_calories?.toLocaleString()}
+              </span>
+              <span className="text-xs text-gray-400 font-medium">kcal/day</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-gray-800/60 flex items-center justify-between text-[11px] text-gray-400 font-mono">
+              <span>TDEE: {m?.tdee} kcal</span>
+              <span>BMR: {m?.bmr}</span>
+            </div>
+          </div>
         </div>
 
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-emerald-500">
-          <div className="flex items-center justify-between text-gray-400">
-            <span className="text-xs font-medium uppercase tracking-wider">Target Protein</span>
-            <Dumbbell className="w-4 h-4 text-emerald-400" />
+        {/* Protein Card */}
+        <div className="glass-card p-5 space-y-3 border-l-4 border-l-emerald-500 relative overflow-hidden group hover:border-emerald-500/40 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Target Protein</span>
+            <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <Dumbbell className="w-4 h-4" />
+            </div>
           </div>
-          <p className="text-3xl font-bold text-emerald-400">{m?.protein_g} <span className="text-sm text-gray-400 font-normal">g/day</span></p>
-          <p className="text-xs text-gray-500">~2.2g per kg body weight</p>
+          <div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-extrabold tracking-tight text-white">{m?.protein_g}</span>
+              <span className="text-xs text-gray-400 font-medium">g/day</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-gray-800/60 flex items-center justify-between text-[11px] text-gray-400 font-mono">
+              <span>~2.2g / kg bodyweight</span>
+              <span className="text-emerald-400 font-medium">
+                {m?.target_calories ? Math.round(((m.protein_g * 4) / m.target_calories) * 100) : 30}% kcal
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-purple-500">
-          <div className="flex items-center justify-between text-gray-400">
-            <span className="text-xs font-medium uppercase tracking-wider">Target Carbs</span>
-            <Target className="w-4 h-4 text-purple-400" />
+        {/* Carbs Card */}
+        <div className="glass-card p-5 space-y-3 border-l-4 border-l-purple-500 relative overflow-hidden group hover:border-purple-500/40 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Target Carbs</span>
+            <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
+              <Target className="w-4 h-4" />
+            </div>
           </div>
-          <p className="text-3xl font-bold text-purple-400">{m?.carbs_g} <span className="text-sm text-gray-400 font-normal">g/day</span></p>
-          <p className="text-xs text-gray-500">Fiber: {m?.fiber_g}g minimum</p>
+          <div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-extrabold tracking-tight text-white">{m?.carbs_g}</span>
+              <span className="text-xs text-gray-400 font-medium">g/day</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-gray-800/60 flex items-center justify-between text-[11px] text-gray-400 font-mono">
+              <span>Fiber: {m?.fiber_g}g min</span>
+              <span className="text-purple-400 font-medium">
+                {m?.target_calories ? Math.round(((m.carbs_g * 4) / m.target_calories) * 100) : 45}% kcal
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="glass-card p-5 space-y-2 border-l-4 border-l-blue-500">
-          <div className="flex items-center justify-between text-gray-400">
-            <span className="text-xs font-medium uppercase tracking-wider">Daily Hydration</span>
-            <Droplets className="w-4 h-4 text-blue-400" />
+        {/* Hydration Card */}
+        <div className="glass-card p-5 space-y-3 border-l-4 border-l-blue-500 relative overflow-hidden group hover:border-blue-500/40 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Daily Hydration</span>
+            <div className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+              <Droplets className="w-4 h-4" />
+            </div>
           </div>
-          <p className="text-3xl font-bold text-blue-400">{m?.water_liters} <span className="text-sm text-gray-400 font-normal">Liters/day</span></p>
-          <p className="text-xs text-gray-500">Includes workout hydration factor</p>
+          <div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-extrabold tracking-tight text-white">{m?.water_liters}</span>
+              <span className="text-xs text-gray-400 font-medium">Liters/day</span>
+            </div>
+            <div className="mt-2 pt-2 border-t border-gray-800/60 flex items-center justify-between text-[11px] text-gray-400 font-mono">
+              <span>Includes workout factor</span>
+              <span className="text-blue-400 font-medium">~{m?.water_liters ? Math.round(m.water_liters * 4) : 12} cups</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Overview Details */}
+      {/* Active Strategy Telemetry */}
       <div className="glass-card p-6 space-y-4">
-        <h3 className="text-lg font-bold text-gray-200">Active Strategy Breakdown</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-200 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-cyan-400" />
+            Active Strategy Telemetry
+          </h3>
+          <span className="text-[11px] font-mono text-gray-400">Deterministic Engine Baseline</span>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
-            <span className="text-xs text-gray-400">Dietary Preferences</span>
-            <p className="font-semibold capitalize text-cyan-300">{profile.dietary_preference}</p>
+          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1.5">
+            <span className="text-xs text-gray-400 block">Dietary Protocol</span>
+            <p className="font-bold capitalize text-cyan-300 flex items-center gap-1.5">
+              <Utensils className="w-3.5 h-3.5 text-cyan-400" />
+              {profile.dietary_preference} Nutrition
+            </p>
+            <span className="text-[11px] text-gray-500 block">Gram-precision portion allocation</span>
           </div>
-          <div className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
-            <span className="text-xs text-gray-400">Workout Frequency</span>
-            <p className="font-semibold text-emerald-300">{profile.workout_days_per_week} Days / Week ({profile.experience_level})</p>
+
+          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1.5">
+            <span className="text-xs text-gray-400 block">Training Frequency</span>
+            <p className="font-bold text-emerald-300 flex items-center gap-1.5">
+              <Dumbbell className="w-3.5 h-3.5 text-emerald-400" />
+              {profile.workout_days_per_week} Days / Week ({profile.experience_level})
+            </p>
+            <span className="text-[11px] text-gray-500 block">Progressive overload framework</span>
           </div>
-          <div className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
-            <span className="text-xs text-gray-400">Calculation Protocol</span>
-            <p className="font-semibold text-purple-300">Mifflin-St Jeor + Biological Floors</p>
+
+          <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1.5">
+            <span className="text-xs text-gray-400 block">Calculation Method</span>
+            <p className="font-bold text-purple-300 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+              Mifflin-St Jeor + Bio Floors
+            </p>
+            <span className="text-[11px] text-gray-500 block">Clinically validated thermodynamics</span>
           </div>
         </div>
       </div>
@@ -331,38 +486,65 @@ export default function DashboardPage() {
 
       {/* Daily Meal Plan Section */}
       <div className="glass-card p-6 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-800/80 pb-4">
-          <div className="flex items-center gap-2.5">
-            <Utensils className="w-5 h-5 text-cyan-400" />
-            <h3 className="text-xl font-bold text-gray-100">
-              {mealPlan ? mealPlan.title : "Daily Meal Plan"}
-            </h3>
-          </div>
-          {mealPlan && (
-            <div className="flex items-center gap-2 flex-wrap">
-              {adaptation && (adaptation.diet_adjustment.calorie_delta !== 0 || adaptation.diet_adjustment.protein_delta_g !== 0) && (
-                <span className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-2.5 py-1 rounded-md">
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>
-                    Adjusted by AI Adaptation:{" "}
-                    {adaptation.diet_adjustment.calorie_delta > 0
-                      ? `+${adaptation.diet_adjustment.calorie_delta}`
-                      : adaptation.diet_adjustment.calorie_delta}{" "}
-                    kcal
-                    {adaptation.diet_adjustment.protein_delta_g !== 0
-                      ? ` · ${adaptation.diet_adjustment.protein_delta_g > 0 ? `+${adaptation.diet_adjustment.protein_delta_g}` : adaptation.diet_adjustment.protein_delta_g}g protein`
-                      : ""}
-                  </span>
-                </span>
-              )}
-              <span className="text-xs font-mono text-cyan-400/90 bg-cyan-950/40 border border-cyan-500/30 px-2.5 py-1 rounded-md w-fit">
-                Deterministic Portions Active
-              </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/25 text-cyan-400">
+              <Utensils className="w-5 h-5" />
             </div>
-          )}
+            <div>
+              <h3 className="text-xl font-bold text-gray-100">
+                {mealPlan ? mealPlan.title : "Daily Meal Plan"}
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Target calorie allocation with deterministic macronutrient distribution
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {mealPlan && (
+              <>
+                {adaptation && (adaptation.diet_adjustment.calorie_delta !== 0 || adaptation.diet_adjustment.protein_delta_g !== 0) && (
+                  <span className="flex items-center gap-1.5 text-xs font-mono text-cyan-300 bg-cyan-950/70 border border-cyan-500/40 px-2.5 py-1 rounded-md">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>
+                      AI Adapted:{" "}
+                      {adaptation.diet_adjustment.calorie_delta > 0
+                        ? `+${adaptation.diet_adjustment.calorie_delta}`
+                        : adaptation.diet_adjustment.calorie_delta}{" "}
+                      kcal
+                    </span>
+                  </span>
+                )}
+                <span className="text-xs font-mono text-cyan-400/90 bg-cyan-950/40 border border-cyan-500/30 px-2.5 py-1 rounded-md">
+                  Deterministic Portions Active
+                </span>
+              </>
+            )}
+
+            {profile?.target_metrics && (
+              <button
+                onClick={handleGenerateMealPlan}
+                disabled={mealPlanLoading}
+                className="px-3.5 py-1.5 rounded-lg bg-cyan-600/90 hover:bg-cyan-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
+              >
+                {mealPlanLoading ? (
+                  <>
+                    <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{mealPlan ? "Regenerate Meal Plan" : "Generate Meal Plan"}</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
-        {mealPlanLoading && (
+        {mealPlanLoading && !mealPlan && (
           <div className="py-8 text-center text-gray-400 flex items-center justify-center gap-2">
             <span className="animate-spin inline-block w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full" />
             <span>Generating tailored nutritional meal plan...</span>
@@ -377,19 +559,19 @@ export default function DashboardPage() {
         )}
 
         {!mealPlanLoading && !mealPlanError && !mealPlan && (
-          <div className="py-8 text-center text-gray-400 space-y-3">
+          <div className="py-10 text-center text-gray-400 space-y-3 border border-dashed border-gray-800 rounded-2xl">
             <Utensils className="w-10 h-10 text-gray-600 mx-auto" />
-            <p className="text-sm">No active meal plan found for your profile.</p>
+            <p className="text-sm font-medium">No active meal plan found for your profile.</p>
             {profile?.target_metrics ? (
               <button
                 onClick={handleGenerateMealPlan}
-                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold transition inline-flex items-center gap-2"
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-semibold transition inline-flex items-center gap-2 shadow-sm"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                Generate Meal Plan
+                Generate Tailored Meal Plan
               </button>
             ) : (
-              <p className="text-xs text-gray-500">Complete your profile to generate a personalized meal plan.</p>
+              <p className="text-xs text-gray-500">Complete your profile biometrics to generate your customized plan.</p>
             )}
           </div>
         )}
@@ -398,35 +580,35 @@ export default function DashboardPage() {
           <div className="space-y-6">
             {/* Daily Macro Summary Row */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
-                <span className="text-xs text-gray-400 block">Daily Calories</span>
-                <p className="text-lg font-bold text-cyan-400">
+              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+                <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-semibold">Calories</span>
+                <p className="text-lg font-bold text-cyan-400 font-mono">
                   {mealPlan.achieved_calories ?? mealPlan.target_calories}{" "}
-                  <span className="text-xs font-normal text-gray-500">/ {mealPlan.target_calories} kcal</span>
+                  <span className="text-xs font-normal text-gray-500 font-sans">/ {mealPlan.target_calories} kcal</span>
                 </p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
-                <span className="text-xs text-gray-400 block">Achieved Protein</span>
-                <p className="text-lg font-bold text-emerald-400">
-                  {mealPlan.achieved_protein_g ?? mealPlan.target_protein_g}{" "}
-                  <span className="text-xs font-normal text-gray-500">g</span>
+              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+                <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-semibold">Protein</span>
+                <p className="text-lg font-bold text-emerald-400 font-mono">
+                  {mealPlan.achieved_protein_g ?? mealPlan.target_protein_g}
+                  <span className="text-xs font-normal text-gray-500 font-sans">g</span>
                 </p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
-                <span className="text-xs text-gray-400 block">Achieved Carbs</span>
-                <p className="text-lg font-bold text-purple-400">
-                  {mealPlan.achieved_carbs_g ?? mealPlan.target_carbs_g}{" "}
-                  <span className="text-xs font-normal text-gray-500">g</span>
+              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+                <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-semibold">Carbohydrates</span>
+                <p className="text-lg font-bold text-purple-400 font-mono">
+                  {mealPlan.achieved_carbs_g ?? mealPlan.target_carbs_g}
+                  <span className="text-xs font-normal text-gray-500 font-sans">g</span>
                 </p>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
-                <span className="text-xs text-gray-400 block">Achieved Fat</span>
-                <p className="text-lg font-bold text-amber-400">
-                  {mealPlan.achieved_fat_g ?? mealPlan.target_fat_g}{" "}
-                  <span className="text-xs font-normal text-gray-500">g</span>
+              <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+                <span className="text-[11px] text-gray-400 uppercase tracking-wider block font-semibold">Healthy Fat</span>
+                <p className="text-lg font-bold text-amber-400 font-mono">
+                  {mealPlan.achieved_fat_g ?? mealPlan.target_fat_g}
+                  <span className="text-xs font-normal text-gray-500 font-sans">g</span>
                 </p>
               </div>
             </div>
@@ -437,46 +619,48 @@ export default function DashboardPage() {
                 {mealPlan.meals.map((meal, idx) => (
                   <div
                     key={idx}
-                    className="p-4 rounded-xl bg-gray-900/70 border border-gray-800 flex flex-col justify-between space-y-4 hover:border-gray-700 transition-colors"
+                    className="p-4 rounded-xl bg-slate-900/70 border border-slate-800 flex flex-col justify-between space-y-4 hover:border-slate-700 transition-colors shadow-sm"
                   >
                     <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-bold text-gray-200 text-base">{meal.meal_name}</h4>
-                        <span className="text-xs font-semibold text-cyan-400 font-mono bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded">
+                      <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
+                        <span className="font-bold text-gray-100 text-sm">{meal.meal_name}</span>
+                        <span className="text-xs font-semibold text-cyan-300 font-mono bg-cyan-950/70 border border-cyan-800/50 px-2 py-0.5 rounded">
                           {meal.actual_calories ?? meal.target_calories} kcal
                         </span>
                       </div>
 
                       {/* Macros per meal */}
-                      <div className="grid grid-cols-3 gap-1.5 text-center text-xs py-1.5 px-2 rounded-lg bg-gray-950/60 border border-gray-800/80">
+                      <div className="grid grid-cols-3 gap-1 text-center text-xs py-1.5 px-2 rounded-lg bg-slate-950/70 border border-slate-800/80">
                         <div>
-                          <span className="text-[10px] uppercase text-gray-500 block">P</span>
-                          <span className="font-semibold text-emerald-400">{meal.protein_g}g</span>
+                          <span className="text-[10px] uppercase text-gray-500 block font-semibold">P</span>
+                          <span className="font-semibold text-emerald-400 font-mono">{meal.protein_g}g</span>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase text-gray-500 block">C</span>
-                          <span className="font-semibold text-purple-400">{meal.carbs_g}g</span>
+                          <span className="text-[10px] uppercase text-gray-500 block font-semibold">C</span>
+                          <span className="font-semibold text-purple-400 font-mono">{meal.carbs_g}g</span>
                         </div>
                         <div>
-                          <span className="text-[10px] uppercase text-gray-500 block">F</span>
-                          <span className="font-semibold text-amber-400">{meal.fat_g}g</span>
+                          <span className="text-[10px] uppercase text-gray-500 block font-semibold">F</span>
+                          <span className="font-semibold text-amber-400 font-mono">{meal.fat_g}g</span>
                         </div>
                       </div>
 
                       {/* Food items breakdown */}
-                      <div className="space-y-1 pt-1">
-                        <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
-                          Components & Portions
+                      <div className="space-y-1.5 pt-1">
+                        <span className="text-[10px] font-semibold text-gray-400 block uppercase tracking-wider">
+                          Portioned Ingredients
                         </span>
                         {Array.isArray(meal.items) && meal.items.length > 0 ? (
                           <ul className="space-y-1.5">
                             {meal.items.map((item, itemIdx) => (
                               <li
                                 key={itemIdx}
-                                className="text-xs flex items-center justify-between text-gray-300 py-1 border-b border-gray-800/50 last:border-0"
+                                className="text-xs flex items-center justify-between text-gray-300 py-0.5 border-b border-gray-800/40 last:border-0"
                               >
-                                <span className="truncate pr-2">{item.food}</span>
-                                <span className="font-mono text-cyan-300 whitespace-nowrap">{item.portion_g}g</span>
+                                <span className="truncate pr-2 text-gray-200">{item.food}</span>
+                                <span className="font-mono text-cyan-300 whitespace-nowrap bg-cyan-950/40 px-1.5 py-0.5 rounded text-[11px]">
+                                  {item.portion_g}g
+                                </span>
                               </li>
                             ))}
                           </ul>
@@ -499,37 +683,67 @@ export default function DashboardPage() {
 
       {/* Structured Workout Plan Section */}
       <div className="glass-card p-6 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-800/80 pb-4">
-          <div className="flex items-center gap-2.5">
-            <Dumbbell className="w-5 h-5 text-emerald-400" />
-            <h3 className="text-xl font-bold text-gray-100">
-              {workoutPlan ? workoutPlan.title : "Structured Workout Routine"}
-            </h3>
-          </div>
-          {workoutPlan && (
-            <div className="flex items-center gap-2 flex-wrap">
-              {adaptation && (adaptation.workout_adjustment.intensity !== "maintain" || adaptation.workout_adjustment.volume !== "medium" || adaptation.workout_adjustment.recovery_days > 0 || adaptation.workout_adjustment.deload_recommended) && (
-                <span className="flex items-center gap-1.5 text-xs font-mono text-emerald-300 bg-emerald-950/70 border border-emerald-500/40 px-2.5 py-1 rounded-md">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>
-                    Adjusted by AI Adaptation:{" "}
-                    {adaptation.workout_adjustment.deload_recommended
-                      ? "Deload Protocol Active"
-                      : `${adaptation.workout_adjustment.intensity} intensity${adaptation.workout_adjustment.recovery_days > 0 ? ` · +${adaptation.workout_adjustment.recovery_days} recovery day` : ""}`}
-                  </span>
-                </span>
-              )}
-              <span className="text-xs font-mono text-emerald-400/90 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-md w-fit">
-                {workoutPlan.split_type} Split
-              </span>
-              <span className="text-xs font-mono text-purple-400/90 bg-purple-950/40 border border-purple-500/30 px-2.5 py-1 rounded-md w-fit">
-                {workoutPlan.experience_level}
-              </span>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
+              <Dumbbell className="w-5 h-5" />
             </div>
-          )}
+            <div>
+              <h3 className="text-xl font-bold text-gray-100">
+                {workoutPlan ? workoutPlan.title : "Structured Workout Routine"}
+              </h3>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Periodized training volume matched to recovery capacity
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {workoutPlan && (
+              <>
+                {adaptation && (adaptation.workout_adjustment.intensity !== "maintain" || adaptation.workout_adjustment.volume !== "medium" || adaptation.workout_adjustment.recovery_days > 0 || adaptation.workout_adjustment.deload_recommended) && (
+                  <span className="flex items-center gap-1.5 text-xs font-mono text-emerald-300 bg-emerald-950/70 border border-emerald-500/40 px-2.5 py-1 rounded-md">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>
+                      AI Adapted:{" "}
+                      {adaptation.workout_adjustment.deload_recommended
+                        ? "Deload Active"
+                        : `${adaptation.workout_adjustment.intensity} intensity`}
+                    </span>
+                  </span>
+                )}
+                <span className="text-xs font-mono text-emerald-400/90 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-md">
+                  {workoutPlan.split_type} Split
+                </span>
+                <span className="text-xs font-mono text-purple-400/90 bg-purple-950/40 border border-purple-500/30 px-2.5 py-1 rounded-md capitalize">
+                  {workoutPlan.experience_level}
+                </span>
+              </>
+            )}
+
+            {profile && (
+              <button
+                onClick={handleGenerateWorkoutPlan}
+                disabled={workoutPlanLoading}
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
+              >
+                {workoutPlanLoading ? (
+                  <>
+                    <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+                    <span>Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>{workoutPlan ? "Regenerate Workout Routine" : "Generate Workout Routine"}</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
-        {workoutPlanLoading && (
+        {workoutPlanLoading && !workoutPlan && (
           <div className="py-8 text-center text-gray-400 flex items-center justify-center gap-2">
             <span className="animate-spin inline-block w-4 h-4 border-2 border-emerald-400 border-t-transparent rounded-full" />
             <span>Generating customized workout split routine...</span>
@@ -544,16 +758,16 @@ export default function DashboardPage() {
         )}
 
         {!workoutPlanLoading && !workoutPlanError && !workoutPlan && (
-          <div className="py-8 text-center text-gray-400 space-y-3">
+          <div className="py-10 text-center text-gray-400 space-y-3 border border-dashed border-gray-800 rounded-2xl">
             <Dumbbell className="w-10 h-10 text-gray-600 mx-auto" />
-            <p className="text-sm">No active workout plan found for your profile.</p>
+            <p className="text-sm font-medium">No active workout plan found for your profile.</p>
             {profile && (
               <button
                 onClick={handleGenerateWorkoutPlan}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition inline-flex items-center gap-2"
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition inline-flex items-center gap-2 shadow-sm"
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                Generate Workout Routine
+                Generate Training Split
               </button>
             )}
           </div>
@@ -562,11 +776,11 @@ export default function DashboardPage() {
         {workoutPlan && (
           <div className="space-y-6">
             {/* Split Description & Target Strategy */}
-            <div className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 space-y-2">
+            <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
               <p className="text-sm text-gray-300 leading-relaxed">
                 {workoutPlan.description || "Personalized workout routine based on your fitness goals."}
               </p>
-              <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-gray-400">
+              <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-gray-400 font-mono">
                 <span>
                   Frequency: <strong className="text-emerald-400 font-semibold">{workoutPlan.days_per_week} Days / Week</strong>
                 </span>
@@ -576,7 +790,7 @@ export default function DashboardPage() {
                 </span>
                 <span>•</span>
                 <span>
-                  Target Level: <strong className="text-purple-400 font-semibold">{workoutPlan.experience_level}</strong>
+                  Target Level: <strong className="text-purple-400 font-semibold capitalize">{workoutPlan.experience_level}</strong>
                 </span>
               </div>
             </div>
@@ -587,15 +801,15 @@ export default function DashboardPage() {
                 {workoutPlan.routine.map((dayRoutine, idx) => (
                   <div
                     key={idx}
-                    className="p-5 rounded-xl bg-gray-900/70 border border-gray-800 flex flex-col justify-between space-y-4 hover:border-gray-700 transition-colors"
+                    className="p-5 rounded-xl bg-slate-900/70 border border-slate-800 flex flex-col justify-between space-y-4 hover:border-slate-700 transition-colors shadow-sm"
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between border-b border-gray-800/80 pb-2.5">
                         <div>
-                          <span className="text-xs uppercase font-mono tracking-wider text-emerald-400 font-semibold block">
+                          <span className="text-[11px] uppercase font-mono tracking-wider text-emerald-400 font-semibold block">
                             {dayRoutine.day}
                           </span>
-                          <h4 className="font-bold text-gray-200 text-base">{dayRoutine.focus}</h4>
+                          <h4 className="font-bold text-gray-100 text-sm sm:text-base">{dayRoutine.focus}</h4>
                         </div>
                         <span className="text-xs font-mono text-gray-400 bg-gray-800/60 px-2 py-0.5 rounded">
                           {Array.isArray(dayRoutine.exercises) ? dayRoutine.exercises.length : 0} Exercises
@@ -604,22 +818,22 @@ export default function DashboardPage() {
 
                       {/* Exercises List */}
                       {Array.isArray(dayRoutine.exercises) && dayRoutine.exercises.length > 0 ? (
-                        <ul className="space-y-2.5 pt-1">
+                        <ul className="space-y-2 pt-1">
                           {dayRoutine.exercises.map((ex, exIdx) => (
                             <li
                               key={exIdx}
-                              className="p-2.5 rounded-lg bg-gray-950/60 border border-gray-800/80 space-y-1.5"
+                              className="p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80 space-y-1.5"
                             >
                               <div className="flex items-start justify-between gap-2">
-                                <span className="font-medium text-sm text-gray-200 leading-snug">
+                                <span className="font-medium text-xs sm:text-sm text-gray-200 leading-snug">
                                   {ex.name}
                                 </span>
                               </div>
                               <div className="flex items-center gap-2 text-xs font-mono flex-wrap">
-                                <span className="text-emerald-300 bg-emerald-950/50 border border-emerald-800/40 px-1.5 py-0.5 rounded">
+                                <span className="text-emerald-300 bg-emerald-950/50 border border-emerald-800/40 px-2 py-0.5 rounded text-[11px]">
                                   {ex.sets} Sets × {ex.reps} Reps
                                 </span>
-                                <span className="text-cyan-300 bg-cyan-950/50 border border-cyan-800/40 px-1.5 py-0.5 rounded">
+                                <span className="text-cyan-300 bg-cyan-950/50 border border-cyan-800/40 px-2 py-0.5 rounded text-[11px]">
                                   {ex.rest_sec}s Rest
                                 </span>
                               </div>

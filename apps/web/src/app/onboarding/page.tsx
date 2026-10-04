@@ -56,43 +56,56 @@ export default function OnboardingPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 py-4">
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-extrabold gradient-text-cyan">Biometric Onboarding Wizard</h1>
-        <p className="text-sm text-gray-400">
-          Configure your physical stats and fitness goals to activate your physiological calculation engine.
+      {/* Header */}
+      <div className="glass-card p-6 sm:p-8 border border-slate-800/80 relative overflow-hidden text-center space-y-2">
+        <div className="absolute top-0 right-1/2 translate-x-1/2 -mt-12 w-64 h-64 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-cyan-950/60 border border-cyan-500/30 text-cyan-300 mx-auto">
+          <Activity className="w-3.5 h-3.5 text-cyan-400" />
+          Physiological Initialization
+        </div>
+        <h1 className="text-3xl font-extrabold tracking-tight text-white">
+          <span className="gradient-text-cyan">Biometric Onboarding Wizard</span>
+        </h1>
+        <p className="text-sm text-gray-400 max-w-lg mx-auto">
+          Configure your physical stats and fitness goals to activate your physiological calculation engine and deterministic planning models.
         </p>
       </div>
 
       {saved && (
-        <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 flex items-center gap-3">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-          <span>Profile saved successfully! Computing physiological targets and redirecting...</span>
+        <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 flex items-center gap-3 shadow-sm">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-sm font-medium">Profile saved successfully! Computing physiological targets and redirecting...</span>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="glass-card p-6 space-y-6">
+      <form onSubmit={handleSubmit} className="glass-card p-6 sm:p-8 space-y-6 border border-slate-800/80">
         {/* Basic Info */}
         <div className="space-y-4">
-          <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
-            <User className="w-4 h-4" /> Personal Biometrics
-          </h3>
+          <div className="flex items-center gap-2 border-b border-gray-800/80 pb-3">
+            <div className="p-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
+              <User className="w-4 h-4" />
+            </div>
+            <h3 className="text-sm font-bold text-gray-100 uppercase tracking-wider">
+              Personal Biometrics
+            </h3>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs text-gray-300">First Name</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">First Name</label>
               <input
                 type="text"
                 value={formData.first_name}
                 onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
                 required
               />
             </div>
             <div>
-              <label className="text-xs text-gray-300">Gender</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">Gender</label>
               <select
                 value={formData.gender}
                 onChange={(e) => setFormData({ ...formData, gender: e.target.value as any })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
               >
                 <option value="male">Male</option>
                 <option value="female">Female</option>
@@ -100,48 +113,48 @@ export default function OnboardingPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-300">Age</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">Age</label>
               <input
                 type="number"
                 value={formData.age}
                 onChange={(e) => setFormData({ ...formData, age: Number(e.target.value) })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
                 min={13}
                 max={100}
                 required
               />
             </div>
             <div>
-              <label className="text-xs text-gray-300">Height (cm)</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">Height (cm)</label>
               <input
                 type="number"
                 value={formData.height_cm}
                 onChange={(e) => setFormData({ ...formData, height_cm: Number(e.target.value) })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
                 min={100}
                 max={250}
                 required
               />
             </div>
             <div>
-              <label className="text-xs text-gray-300">Current Weight (kg)</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">Current Weight (kg)</label>
               <input
                 type="number"
                 step="0.1"
                 value={formData.weight_kg}
                 onChange={(e) => setFormData({ ...formData, weight_kg: Number(e.target.value) })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
                 required
               />
             </div>
             <div>
-              <label className="text-xs text-gray-300">Target Weight (kg)</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">Target Weight (kg)</label>
               <input
                 type="number"
                 step="0.1"
                 value={formData.target_weight_kg}
                 onChange={(e) => setFormData({ ...formData, target_weight_kg: Number(e.target.value) })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
                 required
               />
             </div>
@@ -149,17 +162,22 @@ export default function OnboardingPage() {
         </div>
 
         {/* Goal & Preferences */}
-        <div className="space-y-4 border-t border-gray-800 pt-4">
-          <h3 className="text-sm font-semibold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
-            <Flame className="w-4 h-4" /> Fitness Goal & Activity Level
-          </h3>
+        <div className="space-y-4 border-t border-gray-800/80 pt-5">
+          <div className="flex items-center gap-2 border-b border-gray-800/80 pb-3">
+            <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+              <Flame className="w-4 h-4" />
+            </div>
+            <h3 className="text-sm font-bold text-gray-100 uppercase tracking-wider">
+              Fitness Goal & Activity Level
+            </h3>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs text-gray-300">Primary Goal</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">Primary Goal</label>
               <select
                 value={formData.goal_type}
                 onChange={(e) => setFormData({ ...formData, goal_type: e.target.value as any })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
               >
                 <option value="fat_loss">Fat Loss (-20% Deficit)</option>
                 <option value="muscle_gain">Muscle Gain (+10% Surplus)</option>
@@ -168,11 +186,11 @@ export default function OnboardingPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-300">Daily Activity Level</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">Daily Activity Level</label>
               <select
                 value={formData.activity_level}
                 onChange={(e) => setFormData({ ...formData, activity_level: e.target.value as any })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
               >
                 <option value="sedentary">Sedentary (Office desk job)</option>
                 <option value="lightly_active">Lightly Active (1-3 days exercise)</option>
@@ -181,11 +199,11 @@ export default function OnboardingPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-300">Dietary Preference</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">Dietary Preference</label>
               <select
                 value={formData.dietary_preference}
                 onChange={(e) => setFormData({ ...formData, dietary_preference: e.target.value as any })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
               >
                 <option value="anything">Anything (No Restriction)</option>
                 <option value="vegetarian">Vegetarian</option>
@@ -194,12 +212,12 @@ export default function OnboardingPage() {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-300">Workout Days / Week</label>
+              <label className="text-xs font-semibold text-gray-300 block mb-1.5">Workout Days / Week</label>
               <input
                 type="number"
                 value={formData.workout_days_per_week}
                 onChange={(e) => setFormData({ ...formData, workout_days_per_week: Number(e.target.value) })}
-                className="w-full mt-1 p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-sm focus:border-cyan-500 focus:outline-none"
+                className="w-full p-3 rounded-xl bg-[#0c1322] border border-white/10 text-sm text-gray-100 focus:border-cyan-500/80 focus:ring-1 focus:ring-cyan-500/30 focus:outline-none transition"
                 min={1}
                 max={7}
               />
@@ -210,9 +228,16 @@ export default function OnboardingPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold glow-btn transition disabled:opacity-50"
+          className="w-full py-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold glow-btn transition disabled:opacity-50 flex items-center justify-center gap-2"
         >
-          {loading ? "Processing Profile..." : "Save Profile & Compute Targets"}
+          {loading ? (
+            <>
+              <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+              <span>Processing Profile...</span>
+            </>
+          ) : (
+            "Save Profile & Compute Targets"
+          )}
         </button>
       </form>
     </div>
