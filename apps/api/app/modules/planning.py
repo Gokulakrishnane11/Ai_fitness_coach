@@ -1,3 +1,4 @@
+import json
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -102,11 +103,14 @@ def create_meal_plan(
     )
 
     if user_ctx and user_ctx.user_id:
-        MealPlanRepository.save_meal_plan(
+        saved = MealPlanRepository.save_meal_plan(
             user_id=user_ctx.user_id,
             plan_data=plan,
             user_token=user_ctx.access_token,
         )
+        if saved and saved.get("id"):
+            plan["id"] = str(saved["id"])
+            plan["is_active"] = True
 
     return plan
 
@@ -118,10 +122,31 @@ def get_active_meal_plan(
     """Retrieves the user's currently active meal plan, or None if none is active."""
     if not user_ctx or not user_ctx.user_id:
         return None
-    return MealPlanRepository.get_active_meal_plan(
+    raw = MealPlanRepository.get_active_meal_plan(
         user_id=user_ctx.user_id,
         user_token=user_ctx.access_token,
     )
+    if not raw:
+        return None
+
+    # Merge plan_data so response has top-level meals, achieved_calories, etc.
+    inner = raw.get("plan_data")
+    if isinstance(inner, str):
+        try:
+            inner = json.loads(inner)
+        except Exception:
+            inner = None
+
+    if isinstance(inner, dict):
+        response_data = dict(inner)
+        response_data["id"] = str(raw.get("id")) if raw.get("id") else None
+        response_data["user_id"] = str(raw.get("user_id")) if raw.get("user_id") else None
+        response_data["is_active"] = bool(raw.get("is_active", True))
+        response_data["created_at"] = raw.get("created_at")
+        response_data["plan_data"] = inner
+        return response_data
+
+    return raw
 
 
 @router.post("/workout-plan")
@@ -150,11 +175,14 @@ def create_workout_plan(
     )
 
     if user_ctx and user_ctx.user_id:
-        WorkoutPlanRepository.save_workout_plan(
+        saved = WorkoutPlanRepository.save_workout_plan(
             user_id=user_ctx.user_id,
             plan_data=plan,
             user_token=user_ctx.access_token,
         )
+        if saved and saved.get("id"):
+            plan["id"] = str(saved["id"])
+            plan["is_active"] = True
 
     return plan
 
@@ -166,10 +194,31 @@ def get_active_workout_plan(
     """Retrieves the user's currently active workout plan, or None if none is active."""
     if not user_ctx or not user_ctx.user_id:
         return None
-    return WorkoutPlanRepository.get_active_workout_plan(
+    raw = WorkoutPlanRepository.get_active_workout_plan(
         user_id=user_ctx.user_id,
         user_token=user_ctx.access_token,
     )
+    if not raw:
+        return None
+
+    # Merge routine_data so response has top-level routine, split_type, experience_level, etc.
+    inner = raw.get("routine_data")
+    if isinstance(inner, str):
+        try:
+            inner = json.loads(inner)
+        except Exception:
+            inner = None
+
+    if isinstance(inner, dict):
+        response_data = dict(inner)
+        response_data["id"] = str(raw.get("id")) if raw.get("id") else None
+        response_data["user_id"] = str(raw.get("user_id")) if raw.get("user_id") else None
+        response_data["is_active"] = bool(raw.get("is_active", True))
+        response_data["created_at"] = raw.get("created_at")
+        response_data["routine_data"] = inner
+        return response_data
+
+    return raw
 
 
 @router.post("/apply-adaptation", response_model=ApplyAdaptationResponseSchema)

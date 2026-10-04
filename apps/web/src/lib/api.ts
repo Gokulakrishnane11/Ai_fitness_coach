@@ -82,13 +82,21 @@ export interface MealPlanMeal {
 }
 
 export interface MealPlanResponse {
+  id?: string;
+  user_id?: string;
+  is_active?: boolean;
+  created_at?: string;
   title: string;
   target_calories: number;
+  target_protein_g?: number;
+  target_carbs_g?: number;
+  target_fat_g?: number;
   achieved_calories: number;
   achieved_protein_g: number;
   achieved_carbs_g: number;
   achieved_fat_g: number;
   meals: MealPlanMeal[];
+  plan_data?: any;
 }
 
 export interface WorkoutPlanRequest {
@@ -112,6 +120,10 @@ export interface WorkoutDayRoutine {
 }
 
 export interface WorkoutPlanResponse {
+  id?: string;
+  user_id?: string;
+  is_active?: boolean;
+  created_at?: string;
   title: string;
   split_type: string;
   days_per_week: number;
@@ -122,6 +134,7 @@ export interface WorkoutPlanResponse {
   deload_active?: boolean;
   cardio_minutes?: number;
   recovery_days?: number;
+  routine_data?: any;
 }
 
 export interface DailyLog {
@@ -374,7 +387,9 @@ export async function generateMealPlan(
     body: JSON.stringify(req),
   });
   if (!res.ok) throw new Error("Failed to generate meal plan");
-  return res.json();
+  const data = await res.json();
+  const normalized = normalizeMealPlan(data);
+  return normalized || data;
 }
 
 export async function generateWorkoutPlan(
@@ -402,7 +417,9 @@ export async function generateWorkoutPlan(
     body: JSON.stringify(req),
   });
   if (!res.ok) throw new Error("Failed to generate workout plan");
-  return res.json();
+  const data = await res.json();
+  const normalized = normalizeWorkoutPlan(data);
+  return normalized || data;
 }
 
 export async function submitDailyLog(
@@ -551,6 +568,110 @@ export async function fetchAdaptationHistory(
 }
 
 /**
+ * Normalizes any meal plan response (raw DB row, wrapped plan_data, stringified JSON, or flat schema)
+ * into a guaranteed valid MealPlanResponse with safe arrays and numbers.
+ */
+export function normalizeMealPlan(data: any): MealPlanResponse | null {
+  if (!data || typeof data !== "object") return null;
+
+  let base: any = { ...data };
+  if (data.plan_data) {
+    if (typeof data.plan_data === "string") {
+      try {
+        base = { ...JSON.parse(data.plan_data), ...base };
+      } catch {
+        // fallback
+      }
+    } else if (typeof data.plan_data === "object") {
+      base = { ...data.plan_data, ...base };
+    }
+  }
+
+  const rawMeals = Array.isArray(base.meals) ? base.meals : [];
+  const meals: MealPlanMeal[] = rawMeals.map((m: any) => ({
+    meal_name: String(m.meal_name || m.name || "Meal"),
+    target_calories: Number(m.target_calories) || 0,
+    actual_calories: Number(m.actual_calories ?? m.calories ?? m.target_calories) || 0,
+    protein_g: Number(m.protein_g) || 0,
+    carbs_g: Number(m.carbs_g) || 0,
+    fat_g: Number(m.fat_g) || 0,
+    items: Array.isArray(m.items) ? m.items : [],
+  }));
+
+  const target_calories = Number(base.target_calories) || 2000;
+  const target_protein_g = Number(base.target_protein_g ?? base.achieved_protein_g) || 150;
+  const target_carbs_g = Number(base.target_carbs_g ?? base.achieved_carbs_g) || 200;
+  const target_fat_g = Number(base.target_fat_g ?? base.achieved_fat_g) || 60;
+
+  return {
+    ...base,
+    id: base.id ? String(base.id) : undefined,
+    user_id: base.user_id ? String(base.user_id) : undefined,
+    is_active: base.is_active !== undefined ? Boolean(base.is_active) : true,
+    created_at: base.created_at ? String(base.created_at) : undefined,
+    title: String(base.title || "Daily Meal Plan"),
+    target_calories,
+    target_protein_g,
+    target_carbs_g,
+    target_fat_g,
+    achieved_calories: Number(base.achieved_calories ?? target_calories) || target_calories,
+    achieved_protein_g: Number(base.achieved_protein_g ?? target_protein_g) || target_protein_g,
+    achieved_carbs_g: Number(base.achieved_carbs_g ?? target_carbs_g) || target_carbs_g,
+    achieved_fat_g: Number(base.achieved_fat_g ?? target_fat_g) || target_fat_g,
+    meals,
+  };
+}
+
+/**
+ * Normalizes any workout plan response (raw DB row, wrapped routine_data, stringified JSON, or flat schema)
+ * into a guaranteed valid WorkoutPlanResponse with safe arrays.
+ */
+export function normalizeWorkoutPlan(data: any): WorkoutPlanResponse | null {
+  if (!data || typeof data !== "object") return null;
+
+  let base: any = { ...data };
+  if (data.routine_data) {
+    if (typeof data.routine_data === "string") {
+      try {
+        base = { ...JSON.parse(data.routine_data), ...base };
+      } catch {
+        // fallback
+      }
+    } else if (typeof data.routine_data === "object") {
+      base = { ...data.routine_data, ...base };
+    }
+  }
+
+  const rawRoutine = Array.isArray(base.routine) ? base.routine : [];
+  const routine: WorkoutDayRoutine[] = rawRoutine.map((r: any) => ({
+    day: String(r.day || "Day"),
+    focus: String(r.focus || "Training Session"),
+    exercises: Array.isArray(r.exercises)
+      ? r.exercises.map((e: any) => ({
+          name: String(e.name || "Exercise"),
+          sets: Number(e.sets) || 3,
+          reps: String(e.reps || "10"),
+          rest_sec: Number(e.rest_sec) || 60,
+        }))
+      : [],
+  }));
+
+  return {
+    ...base,
+    id: base.id ? String(base.id) : undefined,
+    user_id: base.user_id ? String(base.user_id) : undefined,
+    is_active: base.is_active !== undefined ? Boolean(base.is_active) : true,
+    created_at: base.created_at ? String(base.created_at) : undefined,
+    title: String(base.title || "Workout Routine"),
+    split_type: String(base.split_type || "FULL_BODY"),
+    days_per_week: Number(base.days_per_week) || 4,
+    experience_level: String(base.experience_level || "beginner"),
+    description: String(base.description || ""),
+    routine,
+  };
+}
+
+/**
  * Fetches the user's currently active meal plan, or null if none is active.
  */
 export async function fetchActiveMealPlan(token?: string): Promise<MealPlanResponse | null> {
@@ -562,8 +683,11 @@ export async function fetchActiveMealPlan(token?: string): Promise<MealPlanRespo
     if (res.status === 404) return null;
     throw new Error(`Failed to fetch active meal plan (HTTP ${res.status})`);
   }
-  const data = await res.json();
-  return data || null;
+  const rawData = await res.json();
+  console.log("[DEBUG] raw active meal plan response:", rawData);
+  const normalized = normalizeMealPlan(rawData);
+  console.log("[DEBUG] normalized meal plan response:", normalized);
+  return normalized;
 }
 
 /**
@@ -578,8 +702,11 @@ export async function fetchActiveWorkoutPlan(token?: string): Promise<WorkoutPla
     if (res.status === 404) return null;
     throw new Error(`Failed to fetch active workout plan (HTTP ${res.status})`);
   }
-  const data = await res.json();
-  return data || null;
+  const rawData = await res.json();
+  console.log("[DEBUG] raw active workout plan response:", rawData);
+  const normalized = normalizeWorkoutPlan(rawData);
+  console.log("[DEBUG] normalized workout plan response:", normalized);
+  return normalized;
 }
 
 export interface ApplyAdaptationResponse {
@@ -628,5 +755,12 @@ export async function applyAdaptationToPlans(
     );
   }
 
-  return res.json();
+  const data = await res.json();
+  if (data && data.meal_plan) {
+    data.meal_plan = normalizeMealPlan(data.meal_plan);
+  }
+  if (data && data.workout_plan) {
+    data.workout_plan = normalizeWorkoutPlan(data.workout_plan);
+  }
+  return data;
 }

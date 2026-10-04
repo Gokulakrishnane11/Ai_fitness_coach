@@ -82,6 +82,48 @@ export default function DashboardPage() {
     }
   }, [fetchAdaptation]);
 
+  const handleGenerateMealPlan = useCallback(async () => {
+    if (!profile?.target_metrics) return;
+    setMealPlanLoading(true);
+    setMealPlanError(null);
+    try {
+      const plan = await generateMealPlan({
+        target_calories: profile.target_metrics.target_calories,
+        target_protein_g: profile.target_metrics.protein_g,
+        target_carbs_g: profile.target_metrics.carbs_g,
+        target_fat_g: profile.target_metrics.fat_g,
+        dietary_preference: profile.dietary_preference,
+      });
+      setMealPlan(plan);
+      await fetchAdaptation();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to generate meal plan";
+      setMealPlanError(msg);
+    } finally {
+      setMealPlanLoading(false);
+    }
+  }, [profile, fetchAdaptation]);
+
+  const handleGenerateWorkoutPlan = useCallback(async () => {
+    if (!profile) return;
+    setWorkoutPlanLoading(true);
+    setWorkoutPlanError(null);
+    try {
+      const wPlan = await generateWorkoutPlan({
+        goal_type: profile.goal_type,
+        workout_days_per_week: profile.workout_days_per_week,
+        experience_level: profile.experience_level,
+      });
+      setWorkoutPlan(wPlan);
+      await fetchAdaptation();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to generate workout plan";
+      setWorkoutPlanError(msg);
+    } finally {
+      setWorkoutPlanLoading(false);
+    }
+  }, [profile, fetchAdaptation]);
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.replace("/login");
@@ -334,6 +376,24 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {!mealPlanLoading && !mealPlanError && !mealPlan && (
+          <div className="py-8 text-center text-gray-400 space-y-3">
+            <Utensils className="w-10 h-10 text-gray-600 mx-auto" />
+            <p className="text-sm">No active meal plan found for your profile.</p>
+            {profile?.target_metrics ? (
+              <button
+                onClick={handleGenerateMealPlan}
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold transition inline-flex items-center gap-2"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Generate Meal Plan
+              </button>
+            ) : (
+              <p className="text-xs text-gray-500">Complete your profile to generate a personalized meal plan.</p>
+            )}
+          </div>
+        )}
+
         {mealPlan && (
           <div className="space-y-6">
             {/* Daily Macro Summary Row */}
@@ -341,7 +401,7 @@ export default function DashboardPage() {
               <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
                 <span className="text-xs text-gray-400 block">Daily Calories</span>
                 <p className="text-lg font-bold text-cyan-400">
-                  {mealPlan.achieved_calories}{" "}
+                  {mealPlan.achieved_calories ?? mealPlan.target_calories}{" "}
                   <span className="text-xs font-normal text-gray-500">/ {mealPlan.target_calories} kcal</span>
                 </p>
               </div>
@@ -349,7 +409,7 @@ export default function DashboardPage() {
               <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
                 <span className="text-xs text-gray-400 block">Achieved Protein</span>
                 <p className="text-lg font-bold text-emerald-400">
-                  {mealPlan.achieved_protein_g}{" "}
+                  {mealPlan.achieved_protein_g ?? mealPlan.target_protein_g}{" "}
                   <span className="text-xs font-normal text-gray-500">g</span>
                 </p>
               </div>
@@ -357,7 +417,7 @@ export default function DashboardPage() {
               <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
                 <span className="text-xs text-gray-400 block">Achieved Carbs</span>
                 <p className="text-lg font-bold text-purple-400">
-                  {mealPlan.achieved_carbs_g}{" "}
+                  {mealPlan.achieved_carbs_g ?? mealPlan.target_carbs_g}{" "}
                   <span className="text-xs font-normal text-gray-500">g</span>
                 </p>
               </div>
@@ -365,64 +425,74 @@ export default function DashboardPage() {
               <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1">
                 <span className="text-xs text-gray-400 block">Achieved Fat</span>
                 <p className="text-lg font-bold text-amber-400">
-                  {mealPlan.achieved_fat_g}{" "}
+                  {mealPlan.achieved_fat_g ?? mealPlan.target_fat_g}{" "}
                   <span className="text-xs font-normal text-gray-500">g</span>
                 </p>
               </div>
             </div>
 
             {/* Meal Cards Grid (Breakfast, Lunch, Dinner, Snack) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {mealPlan.meals.map((meal, idx) => (
-                <div
-                  key={idx}
-                  className="p-4 rounded-xl bg-gray-900/70 border border-gray-800 flex flex-col justify-between space-y-4 hover:border-gray-700 transition-colors"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-bold text-gray-200 text-base">{meal.meal_name}</h4>
-                      <span className="text-xs font-semibold text-cyan-400 font-mono bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded">
-                        {meal.actual_calories} kcal
-                      </span>
-                    </div>
+            {Array.isArray(mealPlan.meals) && mealPlan.meals.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {mealPlan.meals.map((meal, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 rounded-xl bg-gray-900/70 border border-gray-800 flex flex-col justify-between space-y-4 hover:border-gray-700 transition-colors"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-gray-200 text-base">{meal.meal_name}</h4>
+                        <span className="text-xs font-semibold text-cyan-400 font-mono bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded">
+                          {meal.actual_calories ?? meal.target_calories} kcal
+                        </span>
+                      </div>
 
-                    {/* Macros per meal */}
-                    <div className="grid grid-cols-3 gap-1.5 text-center text-xs py-1.5 px-2 rounded-lg bg-gray-950/60 border border-gray-800/80">
-                      <div>
-                        <span className="text-[10px] uppercase text-gray-500 block">P</span>
-                        <span className="font-semibold text-emerald-400">{meal.protein_g}g</span>
+                      {/* Macros per meal */}
+                      <div className="grid grid-cols-3 gap-1.5 text-center text-xs py-1.5 px-2 rounded-lg bg-gray-950/60 border border-gray-800/80">
+                        <div>
+                          <span className="text-[10px] uppercase text-gray-500 block">P</span>
+                          <span className="font-semibold text-emerald-400">{meal.protein_g}g</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase text-gray-500 block">C</span>
+                          <span className="font-semibold text-purple-400">{meal.carbs_g}g</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] uppercase text-gray-500 block">F</span>
+                          <span className="font-semibold text-amber-400">{meal.fat_g}g</span>
+                        </div>
                       </div>
-                      <div>
-                        <span className="text-[10px] uppercase text-gray-500 block">C</span>
-                        <span className="font-semibold text-purple-400">{meal.carbs_g}g</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] uppercase text-gray-500 block">F</span>
-                        <span className="font-semibold text-amber-400">{meal.fat_g}g</span>
-                      </div>
-                    </div>
 
-                    {/* Food items breakdown */}
-                    <div className="space-y-1 pt-1">
-                      <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
-                        Components & Portions
-                      </span>
-                      <ul className="space-y-1.5">
-                        {meal.items.map((item, itemIdx) => (
-                          <li
-                            key={itemIdx}
-                            className="text-xs flex items-center justify-between text-gray-300 py-1 border-b border-gray-800/50 last:border-0"
-                          >
-                            <span className="truncate pr-2">{item.food}</span>
-                            <span className="font-mono text-cyan-300 whitespace-nowrap">{item.portion_g}g</span>
-                          </li>
-                        ))}
-                      </ul>
+                      {/* Food items breakdown */}
+                      <div className="space-y-1 pt-1">
+                        <span className="text-[11px] font-medium text-gray-400 block uppercase tracking-wider">
+                          Components & Portions
+                        </span>
+                        {Array.isArray(meal.items) && meal.items.length > 0 ? (
+                          <ul className="space-y-1.5">
+                            {meal.items.map((item, itemIdx) => (
+                              <li
+                                key={itemIdx}
+                                className="text-xs flex items-center justify-between text-gray-300 py-1 border-b border-gray-800/50 last:border-0"
+                              >
+                                <span className="truncate pr-2">{item.food}</span>
+                                <span className="font-mono text-cyan-300 whitespace-nowrap">{item.portion_g}g</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-xs text-gray-500 italic py-1">No items listed</p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 text-center text-sm text-gray-400 rounded-xl bg-gray-900/50 border border-gray-800">
+                No meal breakdown available for this plan.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -473,12 +543,28 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {!workoutPlanLoading && !workoutPlanError && !workoutPlan && (
+          <div className="py-8 text-center text-gray-400 space-y-3">
+            <Dumbbell className="w-10 h-10 text-gray-600 mx-auto" />
+            <p className="text-sm">No active workout plan found for your profile.</p>
+            {profile && (
+              <button
+                onClick={handleGenerateWorkoutPlan}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition inline-flex items-center gap-2"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Generate Workout Routine
+              </button>
+            )}
+          </div>
+        )}
+
         {workoutPlan && (
           <div className="space-y-6">
             {/* Split Description & Target Strategy */}
             <div className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 space-y-2">
               <p className="text-sm text-gray-300 leading-relaxed">
-                {workoutPlan.description}
+                {workoutPlan.description || "Personalized workout routine based on your fitness goals."}
               </p>
               <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-gray-400">
                 <span>
@@ -496,52 +582,62 @@ export default function DashboardPage() {
             </div>
 
             {/* Routine Schedule Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-              {workoutPlan.routine.map((dayRoutine, idx) => (
-                <div
-                  key={idx}
-                  className="p-5 rounded-xl bg-gray-900/70 border border-gray-800 flex flex-col justify-between space-y-4 hover:border-gray-700 transition-colors"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between border-b border-gray-800/80 pb-2.5">
-                      <div>
-                        <span className="text-xs uppercase font-mono tracking-wider text-emerald-400 font-semibold block">
-                          {dayRoutine.day}
+            {Array.isArray(workoutPlan.routine) && workoutPlan.routine.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                {workoutPlan.routine.map((dayRoutine, idx) => (
+                  <div
+                    key={idx}
+                    className="p-5 rounded-xl bg-gray-900/70 border border-gray-800 flex flex-col justify-between space-y-4 hover:border-gray-700 transition-colors"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-gray-800/80 pb-2.5">
+                        <div>
+                          <span className="text-xs uppercase font-mono tracking-wider text-emerald-400 font-semibold block">
+                            {dayRoutine.day}
+                          </span>
+                          <h4 className="font-bold text-gray-200 text-base">{dayRoutine.focus}</h4>
+                        </div>
+                        <span className="text-xs font-mono text-gray-400 bg-gray-800/60 px-2 py-0.5 rounded">
+                          {Array.isArray(dayRoutine.exercises) ? dayRoutine.exercises.length : 0} Exercises
                         </span>
-                        <h4 className="font-bold text-gray-200 text-base">{dayRoutine.focus}</h4>
                       </div>
-                      <span className="text-xs font-mono text-gray-400 bg-gray-800/60 px-2 py-0.5 rounded">
-                        {dayRoutine.exercises.length} Exercises
-                      </span>
-                    </div>
 
-                    {/* Exercises List */}
-                    <ul className="space-y-2.5 pt-1">
-                      {dayRoutine.exercises.map((ex, exIdx) => (
-                        <li
-                          key={exIdx}
-                          className="p-2.5 rounded-lg bg-gray-950/60 border border-gray-800/80 space-y-1.5"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="font-medium text-sm text-gray-200 leading-snug">
-                              {ex.name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs font-mono flex-wrap">
-                            <span className="text-emerald-300 bg-emerald-950/50 border border-emerald-800/40 px-1.5 py-0.5 rounded">
-                              {ex.sets} Sets × {ex.reps} Reps
-                            </span>
-                            <span className="text-cyan-300 bg-cyan-950/50 border border-cyan-800/40 px-1.5 py-0.5 rounded">
-                              {ex.rest_sec}s Rest
-                            </span>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
+                      {/* Exercises List */}
+                      {Array.isArray(dayRoutine.exercises) && dayRoutine.exercises.length > 0 ? (
+                        <ul className="space-y-2.5 pt-1">
+                          {dayRoutine.exercises.map((ex, exIdx) => (
+                            <li
+                              key={exIdx}
+                              className="p-2.5 rounded-lg bg-gray-950/60 border border-gray-800/80 space-y-1.5"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <span className="font-medium text-sm text-gray-200 leading-snug">
+                                  {ex.name}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs font-mono flex-wrap">
+                                <span className="text-emerald-300 bg-emerald-950/50 border border-emerald-800/40 px-1.5 py-0.5 rounded">
+                                  {ex.sets} Sets × {ex.reps} Reps
+                                </span>
+                                <span className="text-cyan-300 bg-cyan-950/50 border border-cyan-800/40 px-1.5 py-0.5 rounded">
+                                  {ex.rest_sec}s Rest
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-gray-500 italic py-2">No exercises scheduled for this session.</p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 text-center text-sm text-gray-400 rounded-xl bg-gray-900/50 border border-gray-800">
+                No routine days scheduled in this plan.
+              </div>
+            )}
           </div>
         )}
       </div>
