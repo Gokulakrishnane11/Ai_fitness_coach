@@ -764,3 +764,186 @@ export async function applyAdaptationToPlans(
   }
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Body Analysis Types & Client Functions (Phase 5)
+// ---------------------------------------------------------------------------
+
+export type PhotoType = "front" | "side_left" | "side_right" | "back";
+
+export interface PhotoMetadata {
+  id: string;
+  photo_type: PhotoType;
+  captured_at: string;
+  file_size_bytes?: number | null;
+  width_px?: number | null;
+  height_px?: number | null;
+  mime_type?: string | null;
+  created_at: string;
+  analysis_status?: string | null;
+  disclaimer: string;
+}
+
+export interface BodyAnalysisResult {
+  id: string;
+  photo_id: string;
+  analysis_version: string;
+  status: "completed" | "failed" | "pending";
+  pose_detected?: boolean | null;
+  pose_confidence?: number | null;
+  landmarks_visible?: number | null;
+  pose_quality?: "good" | "acceptable" | "poor" | "failed" | null;
+  shoulder_tilt_deg?: number | null;
+  hip_tilt_deg?: number | null;
+  symmetry_score?: number | null;
+  torso_to_leg_ratio?: number | null;
+  shoulder_to_hip_ratio?: number | null;
+  processing_ms?: number | null;
+  error_message?: string | null;
+  created_at: string;
+  disclaimer: string;
+}
+
+export interface PhotoDetailResponse {
+  photo: PhotoMetadata;
+  analysis?: BodyAnalysisResult | null;
+  disclaimer: string;
+}
+
+export interface PhotoListResponse {
+  photos: PhotoMetadata[];
+  count: number;
+  disclaimer: string;
+}
+
+/**
+ * Uploads a progress photo for observational MediaPipe pose analysis.
+ * Strips EXIF metadata on backend, uploads to private storage, and runs pose analysis synchronously.
+ */
+export async function uploadProgressPhoto(
+  file: File,
+  photoType: PhotoType,
+  capturedAt: string,
+  token?: string
+): Promise<PhotoDetailResponse> {
+  const authToken = await getAuthToken(token);
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("photo_type", photoType);
+  formData.append("captured_at", capturedAt);
+
+  const res = await fetch(`${API_BASE_URL}/body-analysis/photos`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    let errorDetail: string | undefined;
+    try {
+      const errData = await res.json();
+      if (errData && typeof errData === "object" && typeof errData.detail === "string") {
+        errorDetail = errData.detail;
+      }
+    } catch {
+      // Non-JSON response
+    }
+    throw new Error(errorDetail || `Failed to upload progress photo (HTTP ${res.status})`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Lists the authenticated user's progress photos metadata (newest first).
+ */
+export async function fetchProgressPhotos(
+  limit: number = 20,
+  token?: string
+): Promise<PhotoListResponse> {
+  const authToken = await getAuthToken(token);
+  const clampedLimit = Math.max(1, Math.min(100, limit));
+  const res = await fetch(`${API_BASE_URL}/body-analysis/photos?limit=${clampedLimit}`, {
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    let errorDetail: string | undefined;
+    try {
+      const errData = await res.json();
+      if (errData && typeof errData === "object" && typeof errData.detail === "string") {
+        errorDetail = errData.detail;
+      }
+    } catch {
+      // Non-JSON response
+    }
+    throw new Error(errorDetail || `Failed to fetch progress photos (HTTP ${res.status})`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Retrieves a single progress photo's metadata and its observational pose analysis result.
+ */
+export async function fetchProgressPhotoDetail(
+  photoId: string,
+  token?: string
+): Promise<PhotoDetailResponse> {
+  const authToken = await getAuthToken(token);
+  const res = await fetch(`${API_BASE_URL}/body-analysis/photos/${photoId}`, {
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    let errorDetail: string | undefined;
+    try {
+      const errData = await res.json();
+      if (errData && typeof errData === "object" && typeof errData.detail === "string") {
+        errorDetail = errData.detail;
+      }
+    } catch {
+      // Non-JSON response
+    }
+    throw new Error(errorDetail || `Failed to fetch photo details (HTTP ${res.status})`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Soft-deletes a progress photo database record and hard-deletes the private storage asset.
+ */
+export async function deleteProgressPhoto(
+  photoId: string,
+  token?: string
+): Promise<{ deleted: boolean; photo_id: string; message: string }> {
+  const authToken = await getAuthToken(token);
+  const res = await fetch(`${API_BASE_URL}/body-analysis/photos/${photoId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+    },
+  });
+
+  if (!res.ok) {
+    let errorDetail: string | undefined;
+    try {
+      const errData = await res.json();
+      if (errData && typeof errData === "object" && typeof errData.detail === "string") {
+        errorDetail = errData.detail;
+      }
+    } catch {
+      // Non-JSON response
+    }
+    throw new Error(errorDetail || `Failed to delete progress photo (HTTP ${res.status})`);
+  }
+
+  return res.json();
+}

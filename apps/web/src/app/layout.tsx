@@ -4,7 +4,7 @@ import "./globals.css";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Dumbbell, Activity, TrendingUp, Compass, MessageSquareQuote, ShieldAlert, LogOut, CheckCircle2 } from "lucide-react";
+import { Dumbbell, Activity, TrendingUp, Compass, MessageSquareQuote, ShieldAlert, LogOut, CheckCircle2, Camera } from "lucide-react";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 
 function AuthNav() {
@@ -42,6 +42,7 @@ function NavLinks() {
 
   const links = [
     { href: "/dashboard", label: "Dashboard", icon: Activity },
+    { href: "/body-analysis", label: "Body Analysis", icon: Camera },
     { href: "/progress", label: "Progress", icon: TrendingUp },
     { href: "/simulation", label: "Simulation", icon: Compass },
     { href: "/coaching", label: "AI Coaching", icon: MessageSquareQuote },

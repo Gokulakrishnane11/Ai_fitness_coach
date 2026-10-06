@@ -16,8 +16,9 @@ import {
   fetchActiveMealPlan,
   fetchActiveWorkoutPlan,
 } from "@/lib/api";
+import Link from "next/link";
 import AdaptationSection from "./AdaptationSection";
-import { Flame, Dumbbell, Droplets, Target, ShieldCheck, AlertTriangle, Utensils, Sparkles } from "lucide-react";
+import { Flame, Dumbbell, Droplets, Target, ShieldCheck, AlertTriangle, Utensils, Sparkles, Camera } from "lucide-react";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
 
@@ -309,6 +310,13 @@ export default function DashboardPage() {
                 <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
                 Mifflin-St Jeor Calibrated
               </span>
+              <Link
+                href="/body-analysis"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/40 text-cyan-300 transition"
+              >
+                <Camera className="w-3.5 h-3.5 text-cyan-400" />
+                Pose & Body Analysis &rarr;
+              </Link>
             </div>
 
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
