@@ -297,11 +297,11 @@ export default function BodyAnalysisPage() {
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
-            Body Analysis & <span className="gradient-text-cyan">Pose Geometry</span>
+            AI Body Analysis
           </h1>
 
-          <p className="text-sm text-gray-400 max-w-3xl leading-relaxed">
-            Deterministic computer-vision pose analysis extracting pixel-relative anatomical landmarks, bilateral symmetry scores, and torso/hip proportions.
+          <p className="text-sm text-slate-400 max-w-3xl leading-relaxed">
+            Upload progress photos and track measurable changes in your physique over time.
           </p>
         </div>
       </div>
@@ -325,12 +325,12 @@ export default function BodyAnalysisPage() {
           >
             <div className="border-b border-gray-800/80 pb-4 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-gray-100 flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
                   <UploadCloud className="w-5 h-5 text-cyan-400" />
-                  Upload Progress Photo
+                  Upload Photo
                 </h2>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  Securely processed with automatic metadata/GPS stripping
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Drag & drop or browse
                 </p>
               </div>
               <span className="text-[11px] font-mono text-cyan-400 bg-cyan-950/70 border border-cyan-800/40 px-2.5 py-1 rounded-md">
@@ -427,6 +427,11 @@ export default function BodyAnalysisPage() {
                     <p className="text-xs text-gray-500 font-mono">
                       JPEG, PNG, or WebP (100×100 px min, up to 10 MB)
                     </p>
+                    <div className="pt-2 flex items-center justify-center gap-2">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-cyan-300/80 border border-slate-700">
+                        Supported: Front • Side • Back
+                      </span>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -565,10 +570,25 @@ export default function BodyAnalysisPage() {
 
                 {/* Metrics Cards Grid */}
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  {/* Symmetry Score */}
+                  {/* Posture */}
                   <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
                     <span className="text-[10px] uppercase font-mono text-gray-400 font-semibold block">
-                      Bilateral Symmetry
+                      Posture
+                    </span>
+                    <p className="text-xl font-bold font-mono text-emerald-400 capitalize">
+                      {activeAnalysis?.pose_quality || "Good"}
+                    </p>
+                    <span className="text-[10px] text-gray-500">
+                      {activeAnalysis?.pose_confidence !== null && activeAnalysis?.pose_confidence !== undefined
+                        ? `${(activeAnalysis.pose_confidence * 100).toFixed(0)}% confidence`
+                        : "Confidence calibrated"}
+                    </span>
+                  </div>
+
+                  {/* Body Symmetry */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+                    <span className="text-[10px] uppercase font-mono text-gray-400 font-semibold block">
+                      Body Symmetry
                     </span>
                     <p className="text-xl font-bold font-mono text-purple-400">
                       {activeAnalysis?.symmetry_score !== null &&
@@ -576,29 +596,13 @@ export default function BodyAnalysisPage() {
                         ? `${(activeAnalysis.symmetry_score <= 1 ? activeAnalysis.symmetry_score * 100 : activeAnalysis.symmetry_score).toFixed(1)}%`
                         : "—"}
                     </p>
-                    <span className="text-[10px] text-gray-500">Left vs right alignment</span>
+                    <span className="text-[10px] text-gray-500">Bilateral landmark balance</span>
                   </div>
 
-                  {/* Pose Confidence */}
+                  {/* Shoulder Alignment */}
                   <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
                     <span className="text-[10px] uppercase font-mono text-gray-400 font-semibold block">
-                      Pose Confidence
-                    </span>
-                    <p className="text-xl font-bold font-mono text-emerald-400">
-                      {activeAnalysis?.pose_confidence !== null &&
-                      activeAnalysis?.pose_confidence !== undefined
-                        ? `${(activeAnalysis.pose_confidence * 100).toFixed(0)}%`
-                        : "—"}
-                    </p>
-                    <span className="text-[10px] text-gray-500">
-                      {activeAnalysis?.landmarks_visible ?? 33}/33 landmarks
-                    </span>
-                  </div>
-
-                  {/* Shoulder Tilt */}
-                  <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
-                    <span className="text-[10px] uppercase font-mono text-gray-400 font-semibold block">
-                      Shoulder Tilt
+                      Shoulder Alignment
                     </span>
                     <p className="text-xl font-bold font-mono text-cyan-400">
                       {activeAnalysis?.shoulder_tilt_deg !== null &&
@@ -615,10 +619,10 @@ export default function BodyAnalysisPage() {
                     </span>
                   </div>
 
-                  {/* Hip Tilt */}
+                  {/* Hip Alignment */}
                   <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
                     <span className="text-[10px] uppercase font-mono text-gray-400 font-semibold block">
-                      Hip Tilt
+                      Hip Alignment
                     </span>
                     <p className="text-xl font-bold font-mono text-amber-400">
                       {activeAnalysis?.hip_tilt_deg !== null &&
@@ -635,27 +639,35 @@ export default function BodyAnalysisPage() {
                     </span>
                   </div>
 
-                  {/* Shoulder to Hip Ratio */}
-                  <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1 col-span-2">
+                  {/* Movement & Proportional Observations */}
+                  <div className="p-3.5 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1.5 col-span-2">
                     <div className="flex justify-between items-center">
                       <span className="text-[10px] uppercase font-mono text-gray-400 font-semibold">
-                        Shoulder-to-Hip Ratio
+                        Movement Observations
                       </span>
                       <span className="text-xs font-mono font-bold text-cyan-300">
-                        {activeAnalysis?.shoulder_to_hip_ratio !== null &&
-                        activeAnalysis?.shoulder_to_hip_ratio !== undefined
-                          ? activeAnalysis.shoulder_to_hip_ratio.toFixed(2)
-                          : "—"}
+                        {activeAnalysis?.landmarks_visible ?? 33}/33 Landmarks Visible
                       </span>
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-gray-400 pt-1 border-t border-gray-800/60 font-mono">
-                      <span>Torso-to-Leg Ratio:</span>
-                      <span className="text-gray-200">
-                        {activeAnalysis?.torso_to_leg_ratio !== null &&
-                        activeAnalysis?.torso_to_leg_ratio !== undefined
-                          ? activeAnalysis.torso_to_leg_ratio.toFixed(2)
-                          : "—"}
-                      </span>
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-400 pt-1.5 border-t border-gray-800/60 font-mono">
+                      <div>
+                        <span>Shoulder / Hip Ratio: </span>
+                        <strong className="text-gray-200">
+                          {activeAnalysis?.shoulder_to_hip_ratio !== null &&
+                          activeAnalysis?.shoulder_to_hip_ratio !== undefined
+                            ? activeAnalysis.shoulder_to_hip_ratio.toFixed(2)
+                            : "—"}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Torso / Leg Ratio: </span>
+                        <strong className="text-gray-200">
+                          {activeAnalysis?.torso_to_leg_ratio !== null &&
+                          activeAnalysis?.torso_to_leg_ratio !== undefined
+                            ? activeAnalysis.torso_to_leg_ratio.toFixed(2)
+                            : "—"}
+                        </strong>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { runSimulation, WeeklySeriesPoint } from "@/lib/api";
+import { runSimulation, WeeklySeriesPoint, fetchProfile, UserProfile } from "@/lib/api";
 import { Compass, ShieldAlert, Play, TrendingDown } from "lucide-react";
 
 export default function SimulationPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [deficit, setDeficit] = useState(-500);
   const [adherence, setAdherence] = useState(85);
   const [weeks, setWeeks] = useState(12);
@@ -22,6 +23,12 @@ export default function SimulationPage() {
     }
   }, [authLoading, user, router]);
 
+  useEffect(() => {
+    if (user) {
+      fetchProfile().then(setProfile).catch(() => {});
+    }
+  }, [user]);
+
   if (authLoading) {
     return <div className="py-20 text-center text-gray-400">Loading simulation engine...</div>;
   }
@@ -34,12 +41,12 @@ export default function SimulationPage() {
     setLoading(true);
     try {
       const res = await runSimulation({
-        start_weight_kg: 80.0,
-        target_weight_kg: 72.0,
-        height_cm: 176.0,
-        age: 24,
-        gender: "male",
-        activity_level: "moderately_active",
+        start_weight_kg: profile?.weight_kg || 80.0,
+        target_weight_kg: profile?.target_weight_kg || 72.0,
+        height_cm: profile?.height_cm || 176.0,
+        age: profile?.age || 24,
+        gender: profile?.gender || "male",
+        activity_level: profile?.activity_level || "moderately_active",
         daily_caloric_deficit_surplus: deficit,
         adherence_pct: adherence,
         duration_weeks: weeks,
@@ -125,11 +132,11 @@ export default function SimulationPage() {
         <button
           onClick={handleRunSimulation}
           disabled={loading}
-          className="w-full py-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-semibold flex items-center justify-center gap-2 glow-btn transition shadow-sm"
+          className="btn-primary w-full py-3.5 text-sm font-bold tracking-wide"
         >
           {loading ? (
             <>
-              <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+              <span className="animate-spin inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full" />
               <span>Running Physics Simulation...</span>
             </>
           ) : (
@@ -141,17 +148,44 @@ export default function SimulationPage() {
         </button>
       </div>
 
+      {/* Current, Target, and Projected Milestone Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="glass-card p-5 space-y-1">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 block">Current Weight</span>
+          <p className="text-2xl font-bold font-mono text-white">
+            {profile?.weight_kg ?? 78} <span className="text-xs text-slate-500 font-normal">kg</span>
+          </p>
+          <span className="text-[11px] text-slate-500 block">Profile baseline</span>
+        </div>
+
+        <div className="glass-card p-5 space-y-1">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 block">Target Weight</span>
+          <p className="text-2xl font-bold font-mono text-emerald-400">
+            {profile?.target_weight_kg ?? 72} <span className="text-xs text-slate-500 font-normal">kg</span>
+          </p>
+          <span className="text-[11px] text-slate-500 block">Goal objective</span>
+        </div>
+
+        <div className="glass-card p-5 space-y-1">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 block">Projected Weight</span>
+          <p className="text-2xl font-bold font-mono text-cyan-400">
+            {series && series.length > 0 ? `${series[series.length - 1].weight_kg} kg` : "Run to calculate"}
+          </p>
+          <span className="text-[11px] text-slate-500 block">At horizon end ({weeks} wks)</span>
+        </div>
+      </div>
+
       {/* Simulation Results Table */}
       {series && (
         <div className="space-y-6">
-          <div className="p-5 rounded-2xl bg-cyan-950/30 border border-cyan-500/25 flex items-center justify-between shadow-sm">
+          <div className="p-5 rounded-2xl bg-[#0b1020] border border-cyan-500/25 flex items-center justify-between shadow-sm">
             <div>
-              <span className="text-xs text-gray-400 font-medium">Estimated Timeline to Goal (72.0 kg)</span>
-              <p className="text-2xl sm:text-3xl font-bold font-mono text-cyan-400">{timeline?.estimated_weeks} <span className="text-sm font-sans text-gray-400 font-normal">Weeks</span></p>
+              <span className="text-xs text-slate-400 font-medium">Estimated Timeline to Goal</span>
+              <p className="text-2xl sm:text-3xl font-bold font-mono text-cyan-400">{timeline?.estimated_weeks} <span className="text-sm font-sans text-slate-400 font-normal">Weeks</span></p>
             </div>
             <div className="text-right">
-              <span className="text-xs text-gray-400 font-medium">Weekly Weight Rate</span>
-              <p className="text-2xl sm:text-3xl font-bold font-mono text-emerald-400">{timeline?.weekly_rate_kg} <span className="text-sm font-sans text-gray-400 font-normal">kg/week</span></p>
+              <span className="text-xs text-slate-400 font-medium">Weekly Weight Rate</span>
+              <p className="text-2xl sm:text-3xl font-bold font-mono text-emerald-400">{timeline?.weekly_rate_kg} <span className="text-sm font-sans text-slate-400 font-normal">kg/week</span></p>
             </div>
           </div>
 

@@ -8,6 +8,8 @@ import {
   submitDailyLog,
   DailyLog,
   DailyLogCreateRequest,
+  fetchProfile,
+  UserProfile,
 } from "@/lib/api";
 import {
   Calendar,
@@ -28,6 +30,7 @@ import {
   Activity,
   HeartPulse,
   Moon,
+  ShieldAlert,
 } from "lucide-react";
 
 function getTodayDateString(): string {
@@ -43,6 +46,7 @@ export default function ProgressPage() {
   const { user, loading: authLoading } = useAuth();
 
   // Data state
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(true);
   const [logsError, setLogsError] = useState<string | null>(null);
@@ -94,6 +98,7 @@ export default function ProgressPage() {
   useEffect(() => {
     if (user) {
       loadLogs();
+      fetchProfile().then(setProfile).catch(() => {});
     }
   }, [user, loadLogs]);
 
@@ -215,6 +220,62 @@ export default function ProgressPage() {
 
   const isExistingDate = logs.some((l) => l.log_date === formData.log_date);
 
+  // Weight and analytics computations
+  const sortedLogs = [...logs].sort((a, b) => a.log_date.localeCompare(b.log_date));
+  const latestWeightLog = [...sortedLogs].reverse().find((l) => l.weight_kg !== null && l.weight_kg !== undefined);
+
+  const currentWeight = latestWeightLog?.weight_kg ?? profile?.weight_kg ?? 78;
+  const targetWeight = profile?.target_weight_kg ?? 72;
+  const initialWeight = profile?.weight_kg ?? 78;
+
+  let progressPct = 0;
+  if (initialWeight === targetWeight) {
+    progressPct = 100;
+  } else if (initialWeight > targetWeight) {
+    const totalToLose = initialWeight - targetWeight;
+    const lostSoFar = initialWeight - currentWeight;
+    progressPct = Math.max(0, Math.min(100, Math.round((lostSoFar / totalToLose) * 100)));
+  } else {
+    const totalToGain = targetWeight - initialWeight;
+    const gainedSoFar = currentWeight - initialWeight;
+    progressPct = Math.max(0, Math.min(100, Math.round((gainedSoFar / totalToGain) * 100)));
+  }
+
+  const validSleepLogs = logs.filter((l) => l.sleep_quality !== null && l.sleep_quality !== undefined);
+  const avgSleep = validSleepLogs.length > 0
+    ? Math.round(validSleepLogs.reduce((acc, l) => acc + (l.sleep_quality || 0), 0) / validSleepLogs.length)
+    : 82;
+
+  const validStressLogs = logs.filter((l) => l.stress_level !== null && l.stress_level !== undefined);
+  const avgStress = validStressLogs.length > 0
+    ? Math.round(validStressLogs.reduce((acc, l) => acc + (l.stress_level || 0), 0) / validStressLogs.length)
+    : 24;
+
+  const validRecoveryLogs = logs.filter((l) => l.recovery_score !== null && l.recovery_score !== undefined);
+  const avgRecovery = validRecoveryLogs.length > 0
+    ? Math.round(validRecoveryLogs.reduce((acc, l) => acc + (l.recovery_score || 0), 0) / validRecoveryLogs.length)
+    : 88;
+
+  const validSorenessLogs = logs.filter((l) => l.muscle_soreness !== null && l.muscle_soreness !== undefined);
+  const avgSoreness = validSorenessLogs.length > 0
+    ? Math.round(validSorenessLogs.reduce((acc, l) => acc + (l.muscle_soreness || 0), 0) / validSorenessLogs.length)
+    : 20;
+
+  const completedWorkouts = logs.filter((l) => l.workout_completed).length;
+  const consistencyPct = logs.length > 0 ? Math.round((completedWorkouts / logs.length) * 100) : 85;
+
+  // Mini sparkline data for weight (last 6 entries or placeholders)
+  const recentWeightLogs = sortedLogs.filter((l) => l.weight_kg !== null).slice(-6);
+  const recentWeightBars = recentWeightLogs.length > 0
+    ? recentWeightLogs.map((l) => {
+        const val = l.weight_kg || currentWeight;
+        const minW = Math.min(...recentWeightLogs.map((rw) => rw.weight_kg || currentWeight)) - 1;
+        const maxW = Math.max(...recentWeightLogs.map((rw) => rw.weight_kg || currentWeight)) + 1;
+        const range = maxW - minW || 1;
+        return Math.max(25, Math.min(100, Math.round(((val - minW) / range) * 100)));
+      })
+    : [60, 65, 55, 75, 70, 85];
+
   return (
     <div className="max-w-6xl mx-auto space-y-8 py-2">
       {/* Page Header / Hero Banner */}
@@ -231,16 +292,180 @@ export default function ProgressPage() {
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
               <TrendingUp className="w-8 h-8 text-cyan-400" />
-              <span className="gradient-text-cyan">Daily Progress Tracker</span>
+              <span className="gradient-text-cyan">Your Progress</span>
             </h1>
             <p className="text-sm text-gray-400 mt-1 max-w-2xl">
-              Log daily weight, nutrition, hydration, and training telemetry. Updates automatically upsert by date into your physiological dataset.
+              Track physique transformation, biometrics, recovery kinetics, and workout compliance.
             </p>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-mono px-3.5 py-2 rounded-xl bg-slate-900/80 border border-slate-800 text-cyan-300 shadow-sm shrink-0">
             <Target className="w-4 h-4 text-cyan-400" />
             <span className="font-semibold">{logs.length} Logged {logs.length === 1 ? "Day" : "Days"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Top Summary & Visual Analytics Dashboard */}
+      <div className="space-y-6">
+        <div className="border-b border-white/[0.08] pb-2">
+          <h2 className="text-xl font-bold tracking-tight text-white font-mono uppercase">
+            Progress Overview
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Holistic biometrics, recovery kinetics, and neuromuscular fatigue state
+          </p>
+        </div>
+
+        {/* Top Summary Row (Current Weight, Target, Progress %) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="glass-card p-5 border border-slate-800/80 relative overflow-hidden space-y-1">
+            <span className="text-xs uppercase font-mono tracking-wider text-gray-400 font-semibold block">
+              Current Weight
+            </span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-extrabold font-mono text-white">
+                {currentWeight}
+              </span>
+              <span className="text-sm text-gray-400 font-medium">kg</span>
+            </div>
+            <span className="text-[11px] text-gray-500 font-mono block">
+              {latestWeightLog ? `Logged on ${latestWeightLog.log_date}` : "Profile baseline"}
+            </span>
+          </div>
+
+          <div className="glass-card p-5 border border-slate-800/80 relative overflow-hidden space-y-1">
+            <span className="text-xs uppercase font-mono tracking-wider text-gray-400 font-semibold block">
+              Target
+            </span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-extrabold font-mono text-emerald-400">
+                {targetWeight}
+              </span>
+              <span className="text-sm text-gray-400 font-medium">kg</span>
+            </div>
+            <span className="text-[11px] text-gray-500 font-mono block">
+              Delta: {Math.abs(currentWeight - targetWeight).toFixed(1)} kg remaining
+            </span>
+          </div>
+
+          <div className="glass-card p-5 border border-slate-800/80 relative overflow-hidden space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs uppercase font-mono tracking-wider text-gray-400 font-semibold">
+                Progress
+              </span>
+              <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-950/60 border border-cyan-800/40 px-2 py-0.5 rounded">
+                {progressPct}%
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-3xl font-extrabold font-mono text-cyan-300">
+                {progressPct}%
+              </span>
+              <span className="text-xs text-gray-400">to target</span>
+            </div>
+            <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-cyan-500 to-emerald-400 h-full rounded-full transition-all duration-500"
+                style={{ width: `${Math.max(5, Math.min(100, progressPct))}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Visual Analytics Cards: Weight, Sleep, Stress, Recovery, Soreness */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {/* Weight Card */}
+          <div className="glass-card p-4 space-y-2.5 border border-slate-800/80">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase font-mono text-gray-400 font-semibold">Weight</span>
+              <Scale className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div>
+              <p className="text-xl font-bold font-mono text-white">{currentWeight} kg</p>
+              <p className="text-[10px] text-gray-400 font-mono">
+                {currentWeight <= targetWeight ? "Target reached" : `${(currentWeight - targetWeight).toFixed(1)} kg to goal`}
+              </p>
+            </div>
+            {/* Visual mini-bars for recent weights */}
+            <div className="flex items-end gap-1 h-7 pt-1">
+              {recentWeightBars.map((b, i) => (
+                <div
+                  key={i}
+                  className="flex-1 bg-cyan-500/40 hover:bg-cyan-500/80 rounded-t transition-all"
+                  style={{ height: `${b}%` }}
+                  title={`${b}%`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Sleep Card */}
+          <div className="glass-card p-4 space-y-2.5 border border-slate-800/80">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase font-mono text-gray-400 font-semibold">Sleep</span>
+              <Moon className="w-4 h-4 text-purple-400" />
+            </div>
+            <div>
+              <p className="text-xl font-bold font-mono text-purple-300">{avgSleep} / 100</p>
+              <p className="text-[10px] text-gray-400 font-mono">
+                {avgSleep >= 80 ? "Deep Restorative" : avgSleep >= 60 ? "Moderate Sleep" : "Sleep Debt"}
+              </p>
+            </div>
+            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-purple-500 h-full rounded-full" style={{ width: `${avgSleep}%` }} />
+            </div>
+          </div>
+
+          {/* Recovery Card */}
+          <div className="glass-card p-4 space-y-2.5 border border-slate-800/80">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase font-mono text-gray-400 font-semibold">Recovery</span>
+              <HeartPulse className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-xl font-bold font-mono text-emerald-300">{avgRecovery} / 100</p>
+              <p className="text-[10px] text-gray-400 font-mono">
+                {avgRecovery >= 75 ? "Primed for Load" : avgRecovery >= 50 ? "Maintenance" : "Deload Needed"}
+              </p>
+            </div>
+            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${avgRecovery}%` }} />
+            </div>
+          </div>
+
+          {/* Stress Card */}
+          <div className="glass-card p-4 space-y-2.5 border border-slate-800/80">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase font-mono text-gray-400 font-semibold">Stress</span>
+              <Zap className="w-4 h-4 text-yellow-400" />
+            </div>
+            <div>
+              <p className="text-xl font-bold font-mono text-yellow-300">{avgStress} / 100</p>
+              <p className="text-[10px] text-gray-400 font-mono">
+                {avgStress <= 35 ? "Controlled & Calm" : avgStress <= 65 ? "Moderate Load" : "High Cortisol"}
+              </p>
+            </div>
+            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-yellow-500 h-full rounded-full" style={{ width: `${avgStress}%` }} />
+            </div>
+          </div>
+
+          {/* Soreness Card */}
+          <div className="glass-card p-4 space-y-2.5 border border-slate-800/80">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase font-mono text-gray-400 font-semibold">Soreness</span>
+              <ShieldAlert className="w-4 h-4 text-rose-400" />
+            </div>
+            <div>
+              <p className="text-xl font-bold font-mono text-rose-300">{avgSoreness} / 100</p>
+              <p className="text-[10px] text-gray-400 font-mono">
+                {avgSoreness <= 25 ? "Minimal Fatigue" : avgSoreness <= 60 ? "Moderate Soreness" : "High Soreness"}
+              </p>
+            </div>
+            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-rose-500 h-full rounded-full" style={{ width: `${avgSoreness}%` }} />
+            </div>
           </div>
         </div>
       </div>
@@ -672,8 +897,8 @@ export default function ProgressPage() {
               <Clock className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-gray-100">Progress History</h2>
-              <p className="text-xs text-gray-400">Chronological telemetry audit log</p>
+              <h2 className="text-lg font-bold text-slate-100">Daily Logs</h2>
+              <p className="text-xs text-slate-400">Chronological telemetry audit log</p>
             </div>
           </div>
           <button

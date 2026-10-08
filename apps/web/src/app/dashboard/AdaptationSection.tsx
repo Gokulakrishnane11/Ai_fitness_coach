@@ -79,6 +79,11 @@ export default function AdaptationSection({
     }
   };
 
+  // Collapsible states for secondary technical sections
+  const [signalsOpen, setSignalsOpen] = useState(false);
+  const [whyOpen, setWhyOpen] = useState(false);
+  const [trendOpen, setTrendOpen] = useState(false);
+
   // History collapsible & item detail states
   const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<AdaptationHistoryRecord[]>([]);
@@ -280,6 +285,11 @@ export default function AdaptationSection({
 
   const readinessMeta = getReadinessBadge(readiness_factor);
 
+  const isPlanOnTrack =
+    diet_adjustment.calorie_delta === 0 &&
+    !workout_adjustment.deload_recommended &&
+    workout_adjustment.recovery_days === 0;
+
   // Helper for explicit delta formatting
   const formatDelta = (val: number, unit: string) => {
     if (val > 0) return `+${val} ${unit}`;
@@ -325,7 +335,7 @@ export default function AdaptationSection({
   return (
     <div className="glass-card p-6 space-y-6 border border-cyan-500/20">
       {/* ========================================================================= */}
-      {/* A. Adaptation Header                                                      */}
+      {/* A. Section Header                                                         */}
       {/* ========================================================================= */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-800/80 pb-5">
         <div className="flex items-start sm:items-center gap-3.5">
@@ -334,16 +344,16 @@ export default function AdaptationSection({
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
-              <h3 className="text-xl font-bold text-gray-100 tracking-tight">
-                AI Daily Readiness & Adaptation
+              <h3 className="text-xl font-bold text-white tracking-tight">
+                AI Coach Recommendation
               </h3>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-700/60 font-mono flex items-center gap-1.5">
+              <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-700/60 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                Live Engine
+                Adaptive AI Active
               </span>
             </div>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Personalized multi-signal physiological adjustment
+            <p className="text-xs text-slate-400 mt-0.5">
+              Today&apos;s recommendation · Personalized guidance calibrated to your recovery and habits
             </p>
           </div>
         </div>
@@ -351,20 +361,22 @@ export default function AdaptationSection({
         {/* Readiness Factor Display & Status Badge */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="px-3.5 py-1.5 rounded-xl bg-gray-900/90 border border-gray-800 flex items-center gap-2">
-            <span className="text-xs text-gray-400 font-medium">Readiness Factor:</span>
-            <span className="text-lg font-bold font-mono text-cyan-300">
-              {readiness_factor.toFixed(2)}
+            <span className="text-xs text-gray-400 font-medium">Readiness:</span>
+            <span className="text-base font-bold font-mono text-cyan-300">
+              {objective_data_available ? readiness_factor.toFixed(2) : "1.00 (Baseline)"}
             </span>
           </div>
           <span
-            className={`text-xs font-semibold px-3 py-2 rounded-xl border flex items-center gap-2 font-mono ${readinessMeta.color}`}
+            className={`text-xs font-medium px-3 py-1.5 rounded-xl border flex items-center gap-2 ${
+              objective_data_available ? readinessMeta.color : "text-cyan-300 bg-cyan-950/60 border-cyan-500/30"
+            }`}
           >
-            <span className={`w-2 h-2 rounded-full ${readinessMeta.dotBg}`} />
-            <span>{readinessMeta.label}</span>
+            <span className={`w-2 h-2 rounded-full ${objective_data_available ? readinessMeta.dotBg : "bg-cyan-400"}`} />
+            <span>{objective_data_available ? readinessMeta.label : "Baseline Readiness"}</span>
           </span>
           {adaptation.feedback_outcome && adaptation.feedback_outcome.trajectory !== "insufficient_data" && (
             <span
-              className={`text-xs font-semibold px-3 py-2 rounded-xl border flex items-center gap-1.5 font-mono ${
+              className={`text-xs font-medium px-3 py-1.5 rounded-xl border flex items-center gap-1.5 ${
                 adaptation.feedback_outcome.trajectory === "improving"
                   ? "text-emerald-300 bg-emerald-950/60 border-emerald-500/40"
                   : adaptation.feedback_outcome.trajectory === "declining"
@@ -385,567 +397,178 @@ export default function AdaptationSection({
       </div>
 
       {/* ========================================================================= */}
-      {/* B. Baseline Mode Banner                                                   */}
+      {/* B. PRIMARY AI RECOMMENDATION CARD                                         */}
       {/* ========================================================================= */}
-      {!objective_data_available && (
-        <div className="p-4 rounded-xl bg-blue-950/30 border border-blue-500/30 text-blue-200 flex items-start gap-3.5">
-          <div className="p-1 rounded-lg bg-blue-500/10 text-blue-400 shrink-0 mt-0.5">
-            <Info className="w-5 h-5" />
-          </div>
-          <div className="space-y-1 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-blue-100 text-sm">
-                Baseline Engine Active
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-950/30 via-gray-900/90 to-slate-900/90 border border-cyan-500/30 p-5 sm:p-6 shadow-xl space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-[11px] font-mono uppercase tracking-widest text-cyan-400 font-semibold block">
+                Coach&apos;s Take
               </span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-900/50 text-blue-300 border border-blue-700/50">
-                Limited Objective Data
-              </span>
-            </div>
-            <p className="text-gray-300 leading-relaxed">
-              Your adaptation recommendations currently utilize baseline computational defaults derived from Mifflin-St Jeor thermodynamics. The numeric scores below are neutral placeholders, not measured physiological data.
-            </p>
-            <p className="text-blue-300/90 font-medium">
-              Consistent logging of your daily nutrition, workouts, body weight, and sleep will unlock personalized physiological adaptation and dynamic readiness scores.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Operational Flags: High Fatigue & Plateau Alerts */}
-      {(high_fatigue_flag || plateau_detected || workout_adjustment.deload_recommended) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {high_fatigue_flag && (
-            <div className="p-3.5 rounded-xl bg-rose-950/40 border border-rose-500/40 flex items-center gap-3">
-              <Activity className="w-5 h-5 text-rose-400 shrink-0" />
-              <div>
-                <span className="text-xs font-bold text-rose-200 block">Elevated Fatigue Detected</span>
-                <span className="text-[11px] text-rose-300/80">Recovery capacity constrained; prioritize rest and sleep.</span>
-              </div>
-            </div>
-          )}
-
-          {plateau_detected && (
-            <div className="p-3.5 rounded-xl bg-amber-950/40 border border-amber-500/40 flex items-center gap-3">
-              <TrendingDown className="w-5 h-5 text-amber-400 flex-shrink-0" />
-              <div>
-                <span className="text-xs font-bold text-amber-200 block">Plateau Indicator Active</span>
-                <span className="text-[11px] text-amber-300/80">Rate of progress has stalled; adjusting stimuli.</span>
-              </div>
-            </div>
-          )}
-
-          {workout_adjustment.deload_recommended && (
-            <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/40 flex items-center gap-3">
-              <ShieldAlert className="w-5 h-5 text-purple-400 flex-shrink-0" />
-              <div>
-                <span className="text-xs font-bold text-purple-200 block">Deload Week Recommended</span>
-                <span className="text-[11px] text-purple-300/80">Systemic fatigue accumulation warrants reduced loading.</span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* B.2. Readiness Multiplier Trend (Historical Snapshots)                    */}
-      {/* ========================================================================= */}
-      <div className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-gray-800/60 pb-2.5">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-cyan-400" />
-            <h4 className="text-xs font-bold text-gray-200 uppercase tracking-wider">
-              Recent Readiness Trend
-            </h4>
-          </div>
-          <span className="text-[10px] font-mono text-gray-400 bg-gray-950/80 px-2 py-0.5 rounded border border-gray-800 self-start sm:self-auto">
-            Historical Snapshots Only · Non-Predictive
-          </span>
-        </div>
-
-        {historyLoading && history.length === 0 && (
-          <div className="p-4 flex items-center justify-center gap-2 text-xs text-gray-400 animate-pulse">
-            <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
-            <span>Loading historical readiness snapshots...</span>
-          </div>
-        )}
-
-        {historyError && history.length === 0 && (
-          <div className="p-3 rounded-lg bg-gray-950/60 border border-gray-800 flex items-center justify-between text-xs text-gray-400">
-            <span>Historical readiness trend temporarily unavailable.</span>
-            <button
-              onClick={() => loadHistory(true)}
-              className="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] transition-colors"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        {!historyLoading && !historyError && history.length === 0 && (
-          <div className="p-3 text-xs text-gray-500 bg-gray-950/40 rounded-lg border border-gray-800/80">
-            No historical adaptation snapshots recorded yet. Snapshots are recorded when your daily logs, wellness telemetry, or plans change.
-          </div>
-        )}
-
-        {!historyLoading && history.length === 1 && (
-          <div className="p-3 bg-gray-950/50 rounded-lg border border-gray-800/80 space-y-1.5 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-400" />
-              <span className="font-mono text-cyan-300 font-bold">
-                {history[0].readiness_factor.toFixed(2)} Readiness
-              </span>
-              <span className="text-gray-400 text-[11px]">
-                ({new Date(history[0].created_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })})
-              </span>
-            </div>
-            <p className="text-[11px] text-gray-500 italic">
-              1 historical snapshot recorded. A trend line will plot chronologically as additional evaluations occur over time.
-            </p>
-          </div>
-        )}
-
-        {history.length >= 2 && (() => {
-          const chronological = [...history].reverse().slice(-14);
-          const count = chronological.length;
-          const minRf = 0.45;
-          const maxRf = 1.15;
-          const baselineY = 75 - ((1.00 - minRf) / (maxRf - minRf)) * 60;
-          const getX = (idx: number) => 35 + (idx / (count - 1)) * 430;
-          const getY = (rf: number) => {
-            const clamped = Math.max(minRf, Math.min(maxRf, rf));
-            return 75 - ((clamped - minRf) / (maxRf - minRf)) * 60;
-          };
-          const points = chronological.map((r, i) => `${getX(i).toFixed(1)},${getY(r.readiness_factor).toFixed(1)}`).join(" ");
-          const areaPath = `M ${getX(0).toFixed(1)},75 ` +
-            chronological.map((r, i) => `L ${getX(i).toFixed(1)},${getY(r.readiness_factor).toFixed(1)}`).join(" ") +
-            ` L ${getX(count - 1).toFixed(1)},75 Z`;
-
-          return (
-            <div className="space-y-2">
-              <div className="w-full overflow-hidden">
-                <svg viewBox="0 0 500 95" className="w-full h-24 select-none">
-                  <defs>
-                    <linearGradient id="readinessGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-
-                  {/* Horizontal Guide: 1.00 Baseline */}
-                  <line
-                    x1="30"
-                    y1={baselineY}
-                    x2="475"
-                    y2={baselineY}
-                    stroke="#4b5563"
-                    strokeDasharray="4 4"
-                    strokeWidth="1"
-                  />
-                  <text
-                    x="475"
-                    y={baselineY - 3}
-                    textAnchor="end"
-                    className="fill-gray-500 font-mono text-[8px]"
-                  >
-                    1.00 Baseline
-                  </text>
-
-                  {/* Area fill */}
-                  <path d={areaPath} fill="url(#readinessGrad)" />
-
-                  {/* Polyline */}
-                  <polyline
-                    fill="none"
-                    stroke="#22d3ee"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    points={points}
-                  />
-
-                  {/* Nodes */}
-                  {chronological.map((r, i) => {
-                    const cx = getX(i);
-                    const cy = getY(r.readiness_factor);
-                    return (
-                      <g key={r.id || i}>
-                        <circle
-                          cx={cx}
-                          cy={cy}
-                          r="4"
-                          className="fill-cyan-400 stroke-gray-950 stroke-[1.5]"
-                        />
-                        <title>
-                          {`${new Date(r.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}: ${r.readiness_factor.toFixed(2)} RF`}
-                        </title>
-                      </g>
-                    );
-                  })}
-
-                  {/* Date labels on bottom axis */}
-                  <text
-                    x={getX(0)}
-                    y="90"
-                    textAnchor="start"
-                    className="fill-gray-400 font-mono text-[8px]"
-                  >
-                    {new Date(chronological[0].created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                  </text>
-                  <text
-                    x={getX(count - 1)}
-                    y="90"
-                    textAnchor="end"
-                    className="fill-gray-400 font-mono text-[8px]"
-                  >
-                    {new Date(chronological[count - 1].created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                  </text>
-                </svg>
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[10px] text-gray-500 border-t border-gray-800/40 pt-1.5">
-                <span>Displaying {count} historical evaluation points chronologically.</span>
-                <span className="italic">Calibrates to logged recovery & training. Does not predict future results.</span>
-              </div>
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* ========================================================================= */}
-      {/* C. Score Cards Grid                                                       */}
-      {/* ========================================================================= */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between text-xs">
-          <span className="font-semibold uppercase tracking-wider text-gray-300 text-[11px]">
-            {objective_data_available ? "Evaluated Physiological Scores" : "Baseline Dimension Indicators (Neutral Defaults)"}
-          </span>
-          {!objective_data_available && (
-            <span className="font-mono text-[10px] text-blue-400 bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/40">
-              Computational Defaults
-            </span>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          {/* 1. Adherence */}
-          <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300 font-medium truncate">Adherence</span>
-                <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              </div>
-              <span className="text-[10px] text-gray-500 font-normal block">Target % adherence</span>
-            </div>
-            <div>
-              <p className="text-xl font-bold font-mono text-cyan-400">
-                {adherence_score}
-                <span className="text-xs text-gray-500 font-normal"> / 100</span>
-              </p>
-            </div>
-            <div
-              className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
-              role="progressbar"
-              aria-valuenow={adherence_score}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Adherence Score"
-            >
-              <div
-                className="bg-cyan-400 h-full rounded-full transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, adherence_score))}%` }}
-              />
+              <h4 className="text-base font-bold text-white tracking-tight">
+                {isPlanOnTrack ? "Your plan is on track" : "Adjustments recommended"}
+              </h4>
             </div>
           </div>
-
-          {/* 2. Recovery */}
-          <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300 font-medium truncate">Recovery</span>
-                <Activity className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              </div>
-              <span className="text-[10px] text-emerald-400/90 font-medium block">Higher is better</span>
-            </div>
-            <div>
-              <p className="text-xl font-bold font-mono text-emerald-400">
-                {recovery_score}
-                <span className="text-xs text-gray-500 font-normal"> / 100</span>
-              </p>
-            </div>
-            <div
-              className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
-              role="progressbar"
-              aria-valuenow={recovery_score}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Recovery Score"
-            >
-              <div
-                className="bg-emerald-400 h-full rounded-full transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, recovery_score))}%` }}
-              />
-            </div>
-          </div>
-
-          {/* 3. Stress */}
-          <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300 font-medium truncate">Stress</span>
-                <HeartPulse className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-              </div>
-              <span className="text-[10px] text-rose-400/90 font-medium block">Higher = worse</span>
-            </div>
-            <div>
-              <p className="text-xl font-bold font-mono text-purple-400">
-                {stress_score}
-                <span className="text-xs text-gray-500 font-normal"> / 100</span>
-              </p>
-            </div>
-            <div
-              className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
-              role="progressbar"
-              aria-valuenow={stress_score}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Stress Score"
-            >
-              <div
-                className="bg-purple-400 h-full rounded-full transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, stress_score))}%` }}
-              />
-            </div>
-          </div>
-
-          {/* 4. Sleep Quality */}
-          <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300 font-medium truncate">Sleep Quality</span>
-                <Moon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              </div>
-              <span className="text-[10px] text-blue-400/90 font-medium block">Higher is better</span>
-            </div>
-            <div>
-              <p className="text-xl font-bold font-mono text-blue-400">
-                {sleep_quality}
-                <span className="text-xs text-gray-500 font-normal"> / 100</span>
-              </p>
-            </div>
-            <div
-              className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
-              role="progressbar"
-              aria-valuenow={sleep_quality}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Sleep Quality"
-            >
-              <div
-                className="bg-blue-400 h-full rounded-full transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, sleep_quality))}%` }}
-              />
-            </div>
-          </div>
-
-          {/* 5. Plateau Risk */}
-          <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300 font-medium truncate">Plateau Risk</span>
-                <TrendingDown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              </div>
-              <span className="text-[10px] text-amber-400/90 font-medium block">Probability score</span>
-            </div>
-            <div>
-              <p className="text-xl font-bold font-mono text-amber-400">
-                {plateau_probability}
-                <span className="text-xs text-gray-500 font-normal"> / 100</span>
-              </p>
-            </div>
-            <div
-              className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
-              role="progressbar"
-              aria-valuenow={plateau_probability}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Plateau Risk"
-            >
-              <div
-                className="bg-amber-400 h-full rounded-full transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, plateau_probability))}%` }}
-              />
-            </div>
-          </div>
-
-          {/* 6. Muscle Soreness & Injury Risk */}
-          <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
-            <div>
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-300 font-medium truncate">Soreness & Injury</span>
-                <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-              </div>
-              <span className="text-[10px] text-rose-400/90 font-medium block">Higher = worse</span>
-            </div>
-            <div>
-              <p className="text-xl font-bold font-mono text-rose-400">
-                {injury_risk}
-                <span className="text-xs text-gray-500 font-normal"> / 100</span>
-              </p>
-            </div>
-            <div
-              className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
-              role="progressbar"
-              aria-valuenow={injury_risk}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label="Injury Risk Index"
-            >
-              <div
-                className="bg-rose-400 h-full rounded-full transition-all"
-                style={{ width: `${Math.min(100, Math.max(0, injury_risk))}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* D & E. Dynamic Adjustments Row (Nutrition & Training)                     */}
-      {/* ========================================================================= */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Nutrition Adjustments Card */}
-        <div className="p-5 rounded-2xl bg-gray-900/70 border border-gray-800 flex flex-col justify-between space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-800/80 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400">
-                <Utensils className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="font-bold text-gray-100 text-sm">Nutrition Adjustments</h4>
-                <p className="text-[11px] text-gray-400">Target caloric and macronutrient deltas</p>
-              </div>
-            </div>
-            <span
-              className={`text-xs font-mono font-semibold px-2.5 py-1 rounded-lg border ${
-                diet_adjustment.calorie_delta === 0
-                  ? "text-gray-300 bg-gray-800/70 border-gray-700/60"
-                  : diet_adjustment.calorie_delta > 0
-                  ? "text-emerald-300 bg-emerald-950/60 border-emerald-800/60"
-                  : "text-amber-300 bg-amber-950/60 border-amber-800/60"
-              }`}
-            >
-              Calories: {formatDelta(diet_adjustment.calorie_delta, "kcal")}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2.5 text-xs">
-            <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/90 text-center space-y-1">
-              <span className="text-[11px] font-medium text-gray-400 block">Protein</span>
-              <p className="font-bold font-mono text-emerald-400 text-sm">
-                {formatDelta(diet_adjustment.protein_delta_g, "g")}
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/90 text-center space-y-1">
-              <span className="text-[11px] font-medium text-gray-400 block">Carbs</span>
-              <p className="font-bold font-mono text-purple-400 text-sm">
-                {formatDelta(diet_adjustment.carb_delta_g, "g")}
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/90 text-center space-y-1">
-              <span className="text-[11px] font-medium text-gray-400 block">Fat</span>
-              <p className="font-bold font-mono text-amber-400 text-sm">
-                {formatDelta(diet_adjustment.fat_delta_g, "g")}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Training Adjustments Card */}
-        <div className="p-5 rounded-2xl bg-gray-900/70 border border-gray-800 flex flex-col justify-between space-y-4">
-          <div className="flex items-center justify-between border-b border-gray-800/80 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
-                <Dumbbell className="w-4 h-4" />
-              </div>
-              <div>
-                <h4 className="font-bold text-gray-100 text-sm">Training Adjustments</h4>
-                <p className="text-[11px] text-gray-400">Stimulus, volume, and recovery modifications</p>
-              </div>
-            </div>
-            {workout_adjustment.deload_recommended ? (
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-rose-950/80 border border-rose-600/60 text-rose-300 flex items-center gap-1 font-mono">
-                <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                Deload Required
+          <div className="flex items-center gap-2 flex-wrap">
+            {isPlanOnTrack ? (
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                No changes needed today
               </span>
             ) : (
-              <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-gray-800/60 border border-gray-700/60 text-gray-300 font-mono">
-                Standard Schedule
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                Updates available
               </span>
             )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5 text-xs">
-            <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/90 space-y-1">
-              <span className="text-[11px] font-medium text-gray-400 block">Target Intensity</span>
-              <p className="font-semibold text-gray-200 capitalize text-sm">
-                Intensity: <span className="font-bold text-emerald-400">{workout_adjustment.intensity}</span>
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/90 space-y-1">
-              <span className="text-[11px] font-medium text-gray-400 block">Training Volume</span>
-              <p className="font-semibold text-gray-200 capitalize text-sm">
-                Volume: <span className="font-bold text-purple-400">{workout_adjustment.volume}</span>
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/90 space-y-1">
-              <span className="text-[11px] font-medium text-gray-400 block">Recovery Allocation</span>
-              <p className="font-semibold text-gray-200 text-sm">
-                Extra Recovery Days: <span className="font-bold text-cyan-400">{workout_adjustment.recovery_days}</span>
-              </p>
-            </div>
-            <div className="p-3 rounded-xl bg-gray-950/60 border border-gray-800/90 space-y-1">
-              <span className="text-[11px] font-medium text-gray-400 block">Conditioning Target</span>
-              <p className="font-semibold text-gray-200 text-sm">
-                Recommended Cardio: <span className="font-bold text-blue-400">{workout_adjustment.cardio_minutes} minutes</span>
-              </p>
-            </div>
+            <span className="text-xs font-mono px-3 py-1 rounded-full bg-slate-900 text-slate-300 border border-white/10 font-semibold">
+              Readiness: {objective_data_available ? `${(readiness_factor * 100).toFixed(0)}%` : "Baseline (1.00)"}
+            </span>
           </div>
         </div>
-      </div>
 
-      {/* ========================================================================= */}
-      {/* E.2. Apply Adaptation Actions (Update Active Plans)                       */}
-      {/* ========================================================================= */}
-      <div className="p-5 rounded-2xl bg-gradient-to-r from-gray-900/90 via-gray-900/80 to-cyan-950/20 border border-cyan-500/30 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-              <Zap className="w-5 h-5" />
+        <p className="text-base text-slate-200 leading-relaxed font-medium italic border-l-2 border-cyan-400/80 pl-3.5 my-2">
+          &ldquo;{coaching_summary || (isPlanOnTrack ? "Your recovery is strong today. Maintain your current training intensity and stay close to your protein target." : "Your training and nutrition have been fine-tuned based on your recent activity signals.")}&rdquo;
+        </p>
+
+        {/* Telemetry Snapshot Badges (Requirement 4: User-friendly baseline presentation) */}
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-1">
+            <div className="p-3 rounded-xl bg-gray-950/70 border border-gray-800/80 flex flex-col">
+              <span className="text-[10px] uppercase font-mono text-slate-400">Readiness</span>
+              <span className="text-sm sm:text-base font-bold font-mono text-cyan-300">
+                {objective_data_available ? readiness_factor.toFixed(2) : "1.00"}
+              </span>
+              <span className="text-[9px] text-slate-500 font-sans mt-0.5">
+                {objective_data_available ? "Evaluated" : "Baseline"}
+              </span>
             </div>
-            <div>
-              <h4 className="font-bold text-gray-100 text-sm sm:text-base">
-                Synchronize Plans with AI Adaptation
-              </h4>
-              <p className="text-xs text-gray-400">
-                Apply these physiological adjustments to your active meal and workout routines
-              </p>
+            <div className="p-3 rounded-xl bg-gray-950/70 border border-gray-800/80 flex flex-col">
+              <span className="text-[10px] uppercase font-mono text-slate-400">Recovery</span>
+              <span className="text-sm sm:text-base font-bold font-mono text-emerald-400">
+                {objective_data_available ? `${recovery_score}/100` : "Waiting for data"}
+              </span>
+              <span className="text-[9px] text-slate-500 font-sans mt-0.5">
+                {objective_data_available ? "Physiological" : "Needs 2+ logs"}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-gray-950/70 border border-gray-800/80 flex flex-col">
+              <span className="text-[10px] uppercase font-mono text-slate-400">Sleep</span>
+              <span className="text-sm sm:text-base font-bold font-mono text-blue-400">
+                {objective_data_available ? `${sleep_quality}/100` : "Waiting for data"}
+              </span>
+              <span className="text-[9px] text-slate-500 font-sans mt-0.5">
+                {objective_data_available ? "Rest quality" : "Log sleep"}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-gray-950/70 border border-gray-800/80 flex flex-col">
+              <span className="text-[10px] uppercase font-mono text-slate-400">Stress</span>
+              <span className="text-sm sm:text-base font-bold font-mono text-purple-400">
+                {objective_data_available ? `${stress_score}/100` : "Waiting for data"}
+              </span>
+              <span className="text-[9px] text-slate-500 font-sans mt-0.5">
+                {objective_data_available ? "Autonomic load" : "Log wellness"}
+              </span>
+            </div>
+            <div className="p-3 rounded-xl bg-gray-950/70 border border-gray-800/80 flex flex-col col-span-2 sm:col-span-1">
+              <span className="text-[10px] uppercase font-mono text-slate-400">Adherence</span>
+              <span className="text-sm sm:text-base font-bold font-mono text-emerald-300">
+                {objective_data_available ? `${adherence_score}%` : "Need more history"}
+              </span>
+              <span className="text-[9px] text-slate-500 font-sans mt-0.5">
+                {objective_data_available ? "Target compliance" : "Initial phase"}
+              </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          {!objective_data_available && (
+            <p className="text-[11px] text-blue-300/85 font-medium flex items-center gap-1.5 pt-0.5">
+              <Info className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span>Personalization is still learning · Complete a few days of consistent logging to unlock personalized readiness.</span>
+            </p>
+          )}
+        </div>
+
+        {/* Operational Flags: High Fatigue & Plateau Alerts (Only if active) */}
+        {(high_fatigue_flag || plateau_detected || workout_adjustment.deload_recommended) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+            {high_fatigue_flag && (
+              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/40 flex items-center gap-3">
+                <Activity className="w-5 h-5 text-rose-400 shrink-0" />
+                <div>
+                  <span className="text-xs font-bold text-rose-200 block">Elevated Fatigue Detected</span>
+                  <span className="text-[11px] text-rose-300/80">Recovery capacity constrained; prioritize rest.</span>
+                </div>
+              </div>
+            )}
+
+            {plateau_detected && (
+              <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 flex items-center gap-3">
+                <TrendingDown className="w-5 h-5 text-amber-400 shrink-0" />
+                <div>
+                  <span className="text-xs font-bold text-amber-200 block">Plateau Indicator Active</span>
+                  <span className="text-[11px] text-amber-300/80">Weight progress has slowed; stimuli calibrated.</span>
+                </div>
+              </div>
+            )}
+
+            {workout_adjustment.deload_recommended && (
+              <div className="p-3 rounded-xl bg-purple-950/40 border border-purple-500/40 flex items-center gap-3">
+                <ShieldAlert className="w-5 h-5 text-purple-400 shrink-0" />
+                <div>
+                  <span className="text-xs font-bold text-purple-200 block">Deload Week Recommended</span>
+                  <span className="text-[11px] text-purple-300/80">Fatigue accumulation warrants reduced loading.</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Recommended Changes Summary & Action */}
+        <div className="pt-3 border-t border-gray-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="text-xs space-y-1">
+            <span className="font-semibold text-gray-300 block">Recommended Changes:</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-gray-400">
+              <span>
+                Nutrition:{" "}
+                <span className="font-mono font-medium text-cyan-300">
+                  {diet_adjustment.calorie_delta === 0 ? "Calories: 0 kcal (No change)" : formatDelta(diet_adjustment.calorie_delta, "kcal")}
+                  {diet_adjustment.protein_delta_g !== 0 && ` • P: ${formatDelta(diet_adjustment.protein_delta_g, "g")}`}
+                </span>
+              </span>
+              <span>
+                Training:{" "}
+                <span className="font-mono font-medium text-emerald-300">
+                  {workout_adjustment.deload_recommended
+                    ? "Deload Protocol (sets capped at 2, RPE 6)"
+                    : `Intensity ${workout_adjustment.intensity}, Volume ${workout_adjustment.volume}`}
+                </span>
+              </span>
+              {workout_adjustment.recovery_days > 0 && (
+                <span className="text-amber-300 font-mono">+{workout_adjustment.recovery_days} Recovery Day(s)</span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => handleApplyAdaptation(false)}
               disabled={applying}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-800 disabled:text-gray-500 text-white text-xs sm:text-sm font-semibold transition-all shadow-lg shadow-cyan-950/50"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:bg-gray-800 disabled:text-gray-500 text-white text-xs font-semibold transition-all shadow-sm"
             >
               {applying ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
-                  <span>Applying Adjustments...</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-300" />
+                  <span>Applying...</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4 text-cyan-200" />
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
                   <span>Apply Adaptation to Plans</span>
                 </>
               )}
@@ -955,35 +578,13 @@ export default function AdaptationSection({
                 onClick={() => handleApplyAdaptation(true)}
                 disabled={applying}
                 title="Force regeneration of active plans"
-                className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-gray-800/80 hover:bg-gray-700 text-gray-300 text-xs font-medium transition-colors border border-gray-700/60"
+                className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium transition-colors border border-gray-700/60"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Force Re-apply</span>
+                <RefreshCw className="w-3 h-3" />
+                <span>Re-apply</span>
               </button>
             )}
           </div>
-        </div>
-
-        {/* Change Preview Summary Line */}
-        <div className="p-3 rounded-xl bg-gray-950/70 border border-gray-800/80 text-xs flex flex-wrap items-center gap-x-4 gap-y-2">
-          <span className="font-semibold text-gray-300">Pending Plan Modifications:</span>
-          <span className="text-gray-400">
-            Diet:{" "}
-            <span className="font-mono font-medium text-cyan-300">
-              {formatDelta(diet_adjustment.calorie_delta, "kcal")} (P: {formatDelta(diet_adjustment.protein_delta_g, "g")}, C: {formatDelta(diet_adjustment.carb_delta_g, "g")}, F: {formatDelta(diet_adjustment.fat_delta_g, "g")})
-            </span>
-          </span>
-          <span className="text-gray-400">
-            Training:{" "}
-            <span className="font-mono font-medium text-emerald-300">
-              {workout_adjustment.deload_recommended
-                ? "Active Deload Protocol (sets capped at 2, RPE 6)"
-                : `Intensity ${workout_adjustment.intensity}, Volume ${workout_adjustment.volume}`}
-            </span>
-          </span>
-          {workout_adjustment.recovery_days > 0 && (
-            <span className="text-amber-300 font-mono">+{workout_adjustment.recovery_days} Recovery Day(s)</span>
-          )}
         </div>
 
         {/* Status Messages */}
@@ -998,8 +599,8 @@ export default function AdaptationSection({
             <Check className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>
               {applyResult.status === "applied"
-                ? "✓ Adaptation applied successfully! Your active meal and workout plans have been updated and previous plans archived."
-                : "✓ Active plans are already up to date with this adaptation decision (no plan churn)."}
+                ? "✓ Adaptation applied successfully! Your active meal and workout plans have been updated."
+                : "✓ Active plans are already up to date with this adaptation decision."}
             </span>
           </div>
         )}
@@ -1013,166 +614,586 @@ export default function AdaptationSection({
       </div>
 
       {/* ========================================================================= */}
-      {/* F. Adaptation Rationale & Driving Signals (Why was your plan adjusted?)   */}
+      {/* C. COLLAPSIBLE: Your Fitness Signals                                      */}
       {/* ========================================================================= */}
-      <div className="space-y-4 pt-2 border-t border-gray-800/70">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-400">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <div>
-            <h4 className="font-bold text-gray-100 text-sm">Adaptation Rationale & Signal Drivers</h4>
-            <p className="text-[11px] text-gray-400">Why your targets and training recommendations were adjusted</p>
-          </div>
+      <div className="pt-2 border-t border-gray-800/70 space-y-3">
+        <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-gray-700/80 transition-colors">
+          <button
+            type="button"
+            onClick={() => setSignalsOpen(!signalsOpen)}
+            className="w-full flex items-center justify-between text-left text-xs font-semibold text-gray-200"
+          >
+            <div className="flex items-center gap-2.5">
+              <Activity className="w-4 h-4 text-cyan-400" />
+              <div>
+                <span className="block text-gray-200">Your Fitness Signals</span>
+                <span className="text-[11px] font-normal text-gray-400">
+                  {objective_data_available
+                    ? "Evaluated physiological indicators (6 dimensions)"
+                    : "Learning baseline defaults (6 dimensions)"}
+                </span>
+              </div>
+            </div>
+            {signalsOpen ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
         </div>
 
-        {/* AI Coach Executive Summary */}
-        {coaching_summary && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-purple-950/30 to-indigo-950/20 border border-purple-800/40 space-y-2">
-            <div className="flex items-center gap-2 text-purple-300 font-semibold text-xs tracking-wider uppercase">
-              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-              <span>AI Coach Executive Synthesis</span>
-            </div>
-            <p className="text-gray-100 text-sm leading-relaxed font-normal">
-              &ldquo;{coaching_summary}&rdquo;
-            </p>
-          </div>
-        )}
-
-        {/* Driving Signals Grid */}
-        {adaptation.reasons && adaptation.reasons.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
-            {adaptation.reasons.map((reason, rIdx) => (
-              <div
-                key={rIdx}
-                className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5 flex flex-col justify-between"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-gray-300 text-[11px]">
-                    {getSignalLabel(reason.signal)}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {reason.value !== null && reason.value !== undefined && (
-                      <span className="font-mono text-gray-400 font-bold text-xs">
-                        {typeof reason.value === "number" ? reason.value : String(reason.value)}
-                      </span>
-                    )}
-                    <span
-                      className={`text-[9px] uppercase font-mono px-1.5 py-0.5 rounded border ${getEffectBadgeClass(
-                        reason.effect
-                      )}`}
-                    >
-                      {reason.effect}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-gray-400 text-[11px] leading-relaxed">
-                  {reason.message}
-                </p>
-              </div>
-            ))}
-          </div>
-        ) : (
-          /* 4 Signal Drivers Grid Fallback */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-            {/* 1. Adherence Signal */}
-            <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-300 text-[11px]">Adherence Signal</span>
-                <span className="font-mono text-cyan-400 font-bold text-xs">{adherence_score}%</span>
-              </div>
-              <p className="text-gray-400 text-[11px] leading-relaxed">
-                {adherence_score >= 80
-                  ? "Consistent adherence to diet and workouts is well-assimilated by your metabolism."
-                  : "Adherence variability noted; stabilizing habit baseline before escalating training volume."}
-              </p>
-            </div>
-
-            {/* 2. Wellness Telemetry Driver */}
-            <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-300 text-[11px]">Wellness Telemetry</span>
-                <span className={`font-mono font-bold text-xs ${high_fatigue_flag ? "text-rose-400" : "text-emerald-400"}`}>
-                  {high_fatigue_flag ? "High Fatigue" : "Normal"}
-                </span>
-              </div>
-              <p className="text-gray-400 text-[11px] leading-relaxed">
-                {high_fatigue_flag
-                  ? "Recovery markers or high muscle soreness detected; training volume reduced to protect joints."
-                  : "Rest, recovery, and sleep scores support current prescribed intensity and stimuli."}
-              </p>
-            </div>
-
-            {/* 3. Progress & Plateau Trend */}
-            <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-300 text-[11px]">Progress Trend</span>
-                <span className={`font-mono font-bold text-xs ${plateau_detected ? "text-amber-400" : "text-cyan-400"}`}>
-                  {plateau_detected ? "Plateau" : "Steady"}
-                </span>
-              </div>
-              <p className="text-gray-400 text-[11px] leading-relaxed">
-                {plateau_detected
-                  ? "Weight response has stalled across 14+ days with solid adherence; adjusting caloric delta."
-                  : "Body weight and performance trends indicate steady physiological progression."}
-              </p>
-            </div>
-
-            {/* 4. Objective Log Availability */}
-            <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-gray-300 text-[11px]">Input Basis</span>
-                <span className="font-mono text-purple-400 font-bold text-xs">
-                  {objective_data_available ? "Logs Active" : "Baseline"}
-                </span>
-              </div>
-              <p className="text-gray-400 text-[11px] leading-relaxed">
-                {objective_data_available
-                  ? "Decisions dynamically integrate your logged daily nutrition, workouts, and wellness telemetry."
-                  : "Currently using computational Mifflin-St Jeor baseline defaults until daily logs are recorded."}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Actionable Recommendations */}
-        {actionable_recommendations && actionable_recommendations.length > 0 && (
+        {signalsOpen && (
           <div className="space-y-3 pt-1">
-            <h4 className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <span>Actionable Adaptation Protocols</span>
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {actionable_recommendations.map((rec, idx) => (
-                <div
-                  key={idx}
-                  className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800/80 flex items-start gap-3 text-xs text-gray-200 hover:border-gray-700/80 transition-colors"
-                >
-                  <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/60 text-[10px] font-bold shrink-0 mt-0.5">
-                    {idx + 1}
-                  </span>
-                  <span className="leading-relaxed">{rec}</span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {/* 1. Adherence */}
+              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-300 font-medium truncate">Adherence</span>
+                    <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-normal block">Target % adherence</span>
                 </div>
-              ))}
+                <div>
+                  {objective_data_available ? (
+                    <p className="text-xl font-bold font-mono text-cyan-400">
+                      {adherence_score}
+                      <span className="text-xs text-gray-500 font-normal"> / 100</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium text-gray-400">Need more history</p>
+                  )}
+                </div>
+                <div
+                  className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-valuenow={objective_data_available ? adherence_score : 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Adherence Score"
+                >
+                  <div
+                    className="bg-cyan-400 h-full rounded-full transition-all"
+                    style={{ width: `${objective_data_available ? Math.min(100, Math.max(0, adherence_score)) : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 2. Recovery */}
+              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-300 font-medium truncate">Recovery</span>
+                    <Activity className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  </div>
+                  <span className="text-[10px] text-emerald-400/90 font-medium block">Higher is better</span>
+                </div>
+                <div>
+                  {objective_data_available ? (
+                    <p className="text-xl font-bold font-mono text-emerald-400">
+                      {recovery_score}
+                      <span className="text-xs text-gray-500 font-normal"> / 100</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium text-gray-400">Waiting for data</p>
+                  )}
+                </div>
+                <div
+                  className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-valuenow={objective_data_available ? recovery_score : 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Recovery Score"
+                >
+                  <div
+                    className="bg-emerald-400 h-full rounded-full transition-all"
+                    style={{ width: `${objective_data_available ? Math.min(100, Math.max(0, recovery_score)) : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 3. Stress */}
+              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-300 font-medium truncate">Stress</span>
+                    <HeartPulse className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                  </div>
+                  <span className="text-[10px] text-rose-400/90 font-medium block">Higher = worse</span>
+                </div>
+                <div>
+                  {objective_data_available ? (
+                    <p className="text-xl font-bold font-mono text-purple-400">
+                      {stress_score}
+                      <span className="text-xs text-gray-500 font-normal"> / 100</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium text-gray-400">Waiting for data</p>
+                  )}
+                </div>
+                <div
+                  className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-valuenow={objective_data_available ? stress_score : 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Stress Score"
+                >
+                  <div
+                    className="bg-purple-400 h-full rounded-full transition-all"
+                    style={{ width: `${objective_data_available ? Math.min(100, Math.max(0, stress_score)) : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 4. Sleep Quality */}
+              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-300 font-medium truncate">Sleep Quality</span>
+                    <Moon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  </div>
+                  <span className="text-[10px] text-blue-400/90 font-medium block">Higher is better</span>
+                </div>
+                <div>
+                  {objective_data_available ? (
+                    <p className="text-xl font-bold font-mono text-blue-400">
+                      {sleep_quality}
+                      <span className="text-xs text-gray-500 font-normal"> / 100</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium text-gray-400">Waiting for data</p>
+                  )}
+                </div>
+                <div
+                  className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-valuenow={objective_data_available ? sleep_quality : 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Sleep Quality"
+                >
+                  <div
+                    className="bg-blue-400 h-full rounded-full transition-all"
+                    style={{ width: `${objective_data_available ? Math.min(100, Math.max(0, sleep_quality)) : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 5. Plateau Risk */}
+              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-300 font-medium truncate">Plateau Risk</span>
+                    <TrendingDown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  </div>
+                  <span className="text-[10px] text-amber-400/90 font-medium block">Probability score</span>
+                </div>
+                <div>
+                  {objective_data_available ? (
+                    <p className="text-xl font-bold font-mono text-amber-400">
+                      {plateau_probability}
+                      <span className="text-xs text-gray-500 font-normal"> / 100</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium text-gray-400">Monitoring</p>
+                  )}
+                </div>
+                <div
+                  className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-valuenow={objective_data_available ? plateau_probability : 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Plateau Risk"
+                >
+                  <div
+                    className="bg-amber-400 h-full rounded-full transition-all"
+                    style={{ width: `${objective_data_available ? Math.min(100, Math.max(0, plateau_probability)) : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* 6. Soreness & Injury Risk */}
+              <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col justify-between space-y-2 min-h-[110px]">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-300 font-medium truncate">Soreness & Injury</span>
+                    <ShieldAlert className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  </div>
+                  <span className="text-[10px] text-rose-400/90 font-medium block">Higher = worse</span>
+                </div>
+                <div>
+                  {objective_data_available ? (
+                    <p className="text-xl font-bold font-mono text-rose-400">
+                      {injury_risk}
+                      <span className="text-xs text-gray-500 font-normal"> / 100</span>
+                    </p>
+                  ) : (
+                    <p className="text-xs font-medium text-gray-400">Waiting for data</p>
+                  )}
+                </div>
+                <div
+                  className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden"
+                  role="progressbar"
+                  aria-valuenow={objective_data_available ? injury_risk : 0}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label="Injury Risk Index"
+                >
+                  <div
+                    className="bg-rose-400 h-full rounded-full transition-all"
+                    style={{ width: `${objective_data_available ? Math.min(100, Math.max(0, injury_risk)) : 0}%` }}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
 
       {/* ========================================================================= */}
-      {/* G. Adaptation History & Audit Trail (Previous decisions over time)        */}
+      {/* D. COLLAPSIBLE: Why Your Plan Changed (Rationale & Signals)               */}
       {/* ========================================================================= */}
       <div className="pt-2 border-t border-gray-800/70 space-y-3">
-        <div className="flex items-center justify-between p-3 rounded-xl bg-gray-900/60 border border-gray-800">
+        <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-gray-700/80 transition-colors">
+          <button
+            type="button"
+            onClick={() => setWhyOpen(!whyOpen)}
+            className="w-full flex items-center justify-between text-left text-xs font-semibold text-gray-200"
+          >
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-purple-400" />
+              <div>
+                <span className="block text-gray-200">Why Your Plan Changed</span>
+                <span className="text-[11px] font-normal text-gray-400">
+                  {isPlanOnTrack ? "Signals stable · Protocols aligned" : "Active adjustment drivers and recommendations"}
+                </span>
+              </div>
+            </div>
+            {whyOpen ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+        </div>
+
+        {whyOpen && (
+          <div className="space-y-4 pt-1">
+            {/* Driving Signals Grid */}
+            {adaptation.reasons && adaptation.reasons.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                {adaptation.reasons.map((reason, rIdx) => (
+                  <div
+                    key={rIdx}
+                    className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5 flex flex-col justify-between"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-gray-300 text-[11px]">
+                        {getSignalLabel(reason.signal)}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {reason.value !== null && reason.value !== undefined && (
+                          <span className="font-mono text-gray-400 font-bold text-xs">
+                            {typeof reason.value === "number" ? reason.value : String(reason.value)}
+                          </span>
+                        )}
+                        <span
+                          className={`text-[9px] uppercase font-mono px-1.5 py-0.5 rounded border ${getEffectBadgeClass(
+                            reason.effect
+                          )}`}
+                        >
+                          {reason.effect}
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-gray-400 text-[11px] leading-relaxed">
+                      {reason.message}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Fallback Driving Signals Grid */
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-300 text-[11px]">Adherence Signal</span>
+                    <span className="font-mono text-cyan-400 font-bold text-xs">{adherence_score}%</span>
+                  </div>
+                  <p className="text-gray-400 text-[11px] leading-relaxed">
+                    {adherence_score >= 80
+                      ? "Consistent adherence to diet and workouts is well-assimilated by your metabolism."
+                      : "Adherence variability noted; stabilizing habit baseline before escalating training volume."}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-300 text-[11px]">Wellness Telemetry</span>
+                    <span className={`font-mono font-bold text-xs ${high_fatigue_flag ? "text-rose-400" : "text-emerald-400"}`}>
+                      {high_fatigue_flag ? "High Fatigue" : "Normal"}
+                    </span>
+                  </div>
+                  <p className="text-gray-400 text-[11px] leading-relaxed">
+                    {high_fatigue_flag
+                      ? "Recovery markers or high muscle soreness detected; training volume reduced to protect joints."
+                      : "Rest, recovery, and sleep scores support current prescribed intensity and stimuli."}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-300 text-[11px]">Progress Trend</span>
+                    <span className={`font-mono font-bold text-xs ${plateau_detected ? "text-amber-400" : "text-cyan-400"}`}>
+                      {plateau_detected ? "Plateau" : "Steady"}
+                    </span>
+                  </div>
+                  <p className="text-gray-400 text-[11px] leading-relaxed">
+                    {plateau_detected
+                      ? "Weight response has stalled across 14+ days with solid adherence; adjusting caloric delta."
+                      : "Body weight and performance trends indicate steady physiological progression."}
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-300 text-[11px]">Input Basis</span>
+                    <span className="font-mono text-purple-400 font-bold text-xs">
+                      {objective_data_available ? "Logs Active" : "Baseline"}
+                    </span>
+                  </div>
+                  <p className="text-gray-400 text-[11px] leading-relaxed">
+                    {objective_data_available
+                      ? "Decisions dynamically integrate your logged daily nutrition, workouts, and wellness telemetry."
+                      : "Currently using computational Mifflin-St Jeor baseline defaults until daily logs are recorded."}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Actionable Recommendations */}
+            {actionable_recommendations && actionable_recommendations.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <h4 className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>Actionable Protocols</span>
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {actionable_recommendations.map((rec, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800/80 flex items-start gap-3 text-xs text-gray-200 hover:border-gray-700/80 transition-colors"
+                    >
+                      <span className="flex items-center justify-center w-5 h-5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800/60 text-[10px] font-bold shrink-0 mt-0.5">
+                        {idx + 1}
+                      </span>
+                      <span className="leading-relaxed">{rec}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* E. COLLAPSIBLE: Your Recent Progress (Readiness Trend)                     */}
+      {/* ========================================================================= */}
+      <div className="pt-2 border-t border-gray-800/70 space-y-3">
+        <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-gray-700/80 transition-colors">
+          <button
+            type="button"
+            onClick={() => setTrendOpen(!trendOpen)}
+            className="w-full flex items-center justify-between text-left text-xs font-semibold text-gray-200"
+          >
+            <div className="flex items-center gap-2.5">
+              <TrendingUp className="w-4 h-4 text-cyan-400" />
+              <div>
+                <span className="block text-gray-200">Your Recent Progress</span>
+                <span className="text-[11px] font-normal text-gray-400">
+                  Readiness history across {history.length} evaluation snapshot(s)
+                </span>
+              </div>
+            </div>
+            {trendOpen ? (
+              <ChevronUp className="w-4 h-4 text-gray-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-gray-400" />
+            )}
+          </button>
+        </div>
+
+        {trendOpen && (
+          <div className="p-4 rounded-xl bg-gray-900/60 border border-gray-800 space-y-3">
+            {historyLoading && history.length === 0 && (
+              <div className="p-4 flex items-center justify-center gap-2 text-xs text-gray-400 animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+                <span>Loading historical readiness snapshots...</span>
+              </div>
+            )}
+
+            {historyError && history.length === 0 && (
+              <div className="p-3 rounded-lg bg-gray-950/60 border border-gray-800 flex items-center justify-between text-xs text-gray-400">
+                <span>Historical readiness trend temporarily unavailable.</span>
+                <button
+                  onClick={() => loadHistory(true)}
+                  className="px-2.5 py-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {!historyLoading && !historyError && history.length === 0 && (
+              <div className="p-3 text-xs text-gray-500 bg-gray-950/40 rounded-lg border border-gray-800/80">
+                No historical adaptation snapshots recorded yet. Snapshots are recorded when your daily logs, wellness telemetry, or plans change.
+              </div>
+            )}
+
+            {!historyLoading && history.length === 1 && (
+              <div className="p-3 bg-gray-950/50 rounded-lg border border-gray-800/80 space-y-1.5 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <span className="font-mono text-cyan-300 font-bold">
+                    {history[0].readiness_factor.toFixed(2)} Readiness
+                  </span>
+                  <span className="text-gray-400 text-[11px]">
+                    ({new Date(history[0].created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })})
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-500 italic">
+                  1 historical snapshot recorded. A trend line will plot chronologically as additional evaluations occur over time.
+                </p>
+              </div>
+            )}
+
+            {history.length >= 2 && (() => {
+              const chronological = [...history].reverse().slice(-14);
+              const count = chronological.length;
+              const minRf = 0.45;
+              const maxRf = 1.15;
+              const baselineY = 75 - ((1.00 - minRf) / (maxRf - minRf)) * 60;
+              const getX = (idx: number) => 35 + (idx / (count - 1)) * 430;
+              const getY = (rf: number) => {
+                const clamped = Math.max(minRf, Math.min(maxRf, rf));
+                return 75 - ((clamped - minRf) / (maxRf - minRf)) * 60;
+              };
+              const points = chronological.map((r, i) => `${getX(i).toFixed(1)},${getY(r.readiness_factor).toFixed(1)}`).join(" ");
+              const areaPath = `M ${getX(0).toFixed(1)},75 ` +
+                chronological.map((r, i) => `L ${getX(i).toFixed(1)},${getY(r.readiness_factor).toFixed(1)}`).join(" ") +
+                ` L ${getX(count - 1).toFixed(1)},75 Z`;
+
+              return (
+                <div className="space-y-2">
+                  <div className="w-full overflow-hidden">
+                    <svg viewBox="0 0 500 95" className="w-full h-24 select-none">
+                      <defs>
+                        <linearGradient id="readinessGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.25" />
+                          <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.0" />
+                        </linearGradient>
+                      </defs>
+
+                      {/* Horizontal Guide: 1.00 Baseline */}
+                      <line
+                        x1="30"
+                        y1={baselineY}
+                        x2="475"
+                        y2={baselineY}
+                        stroke="#4b5563"
+                        strokeDasharray="4 4"
+                        strokeWidth="1"
+                      />
+                      <text
+                        x="475"
+                        y={baselineY - 3}
+                        textAnchor="end"
+                        className="fill-gray-500 font-mono text-[8px]"
+                      >
+                        1.00 Baseline
+                      </text>
+
+                      {/* Area fill */}
+                      <path d={areaPath} fill="url(#readinessGrad)" />
+
+                      {/* Polyline */}
+                      <polyline
+                        fill="none"
+                        stroke="#22d3ee"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        points={points}
+                      />
+
+                      {/* Nodes */}
+                      {chronological.map((r, i) => {
+                        const cx = getX(i);
+                        const cy = getY(r.readiness_factor);
+                        return (
+                          <g key={r.id || i}>
+                            <circle
+                              cx={cx}
+                              cy={cy}
+                              r="4"
+                              className="fill-cyan-400 stroke-gray-950 stroke-[1.5]"
+                            />
+                            <title>
+                              {`${new Date(r.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}: ${r.readiness_factor.toFixed(2)} RF`}
+                            </title>
+                          </g>
+                        );
+                      })}
+
+                      {/* Date labels on bottom axis */}
+                      <text
+                        x={getX(0)}
+                        y="90"
+                        textAnchor="start"
+                        className="fill-gray-400 font-mono text-[8px]"
+                      >
+                        {new Date(chronological[0].created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      </text>
+                      <text
+                        x={getX(count - 1)}
+                        y="90"
+                        textAnchor="end"
+                        className="fill-gray-400 font-mono text-[8px]"
+                      >
+                        {new Date(chronological[count - 1].created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      </text>
+                    </svg>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[10px] text-gray-500 border-t border-gray-800/40 pt-1.5">
+                    <span>Displaying {count} historical evaluation points chronologically.</span>
+                    <span className="italic">Calibrates to logged recovery & training.</span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================================= */}
+      {/* F. COLLAPSIBLE: Past Adaptation History                                   */}
+      {/* ========================================================================= */}
+      <div className="pt-2 border-t border-gray-800/70 space-y-3">
+        <div className="p-3.5 rounded-xl bg-gray-900/60 border border-gray-800 hover:border-gray-700/80 transition-colors">
           <button
             type="button"
             onClick={toggleHistory}
-            className="flex-1 flex items-center justify-between text-left text-xs font-semibold text-gray-300 hover:text-white transition-colors"
+            className="w-full flex items-center justify-between text-left text-xs font-semibold text-gray-300 hover:text-white transition-colors"
           >
             <div className="flex items-center gap-2.5">
               <History className="w-4 h-4 text-cyan-400" />
               <div>
-                <span className="block text-gray-200">Adaptation History & Decision Audit Trail</span>
+                <span className="block text-gray-200">Past Adaptation History</span>
                 <span className="text-[11px] font-normal text-gray-400">Previous adaptation decisions recorded over time</span>
               </div>
             </div>
